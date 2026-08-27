@@ -187,34 +187,80 @@
 
 ---
 
-### **Phase 7: Python Server Integration (Optional)**
-**Goal:** Add optional Python server connection for recording/cloud features
+### **Phase 7: Python Client Examples (Optional)**
+**Goal:** Create example Python scripts that consume the MJPEG stream as clients
+
+**Architecture Change:** Python is now a simple MJPEG client (no polling, no bidirectional communication). ESP32 just streams, Python just receives.
+
+**Reference:** `/Users/szemy/Workspace/Genican/ESP32P4_video_transmission/tools/rtsp_capture_viewer.py` - Use as template for GUI viewer
 
 **Tasks:**
-- [ ] Add Python server settings to web UI:
-  - Enable/disable toggle
-  - Server IP address input
-  - Connection status indicator
-- [ ] Implement polling mechanism:
-  - `GET /api/poll` endpoint on ESP32
-  - ESP32 polls Python server every 2 seconds
-  - Python server returns commands (if any)
-- [ ] Update Python server.py:
-  - Change `/stream` from POST receiver to HTTP client pulling from ESP32
-  - Add `/commands` endpoint for ESP32 to poll
-  - Update recording to pull from ESP32 stream
-- [ ] Implement command handling on ESP32:
-  - LED flash (photo taken)
-  - Resolution change
-  - Status query
-- [ ] Test Python server connection (connect/disconnect)
-- [ ] Test recording functionality
+- [ ] Create `python_clients/` directory
+- [ ] Create `camera_viewer.py` - PyQt6 GUI viewer with features:
+  - Live MJPEG stream display
+  - Auto-capture timer (1 frame per second)
+  - Start/Stop capture toggle button
+  - FPS and resolution display
+  - Settings storage (JSON/YAML config file)
+  - Connection dialog with 10-second countdown
+  - Capture directory configuration
+  - Status notifications
+- [ ] Create `settings.json` - Store configuration:
+  ```json
+  {
+    "stream_url": "http://192.168.2.100/stream",
+    "capture_dir": "./captures",
+    "auto_capture_enabled": true,
+    "capture_interval": 1.0,
+    "last_window_size": [900, 760]
+  }
+  ```
+- [ ] Create `stream_viewer_simple.py` - Simple OpenCV viewer (no GUI)
+- [ ] Create `video_recorder.py` - Record video from MJPEG stream
+- [ ] Create `photo_capture.py` - Manual capture with keyboard shortcuts
+- [ ] Create `motion_detector.py` - Motion detection example
+- [ ] Create `cloud_uploader.py` - Upload frames to cloud storage
+- [ ] Create `requirements.txt` - Python dependencies:
+  ```
+  opencv-python>=4.8.0
+  PyQt6>=6.5.0
+  PyYAML>=6.0
+  requests>=2.31.0
+  numpy>=1.24.0
+  ```
+- [ ] Create `README.md` - Documentation for Python clients
+- [ ] Test each script with ESP32 stream
 
-**Files to create/modify:**
-- ESP32: `python_client.cpp` (polling logic)
-- Python: `server.py` (update architecture)
+**Key Features from RTSP Viewer to Implement:**
+- ✅ Auto-capture timer with configurable interval
+- ✅ Start/Stop toggle for capture
+- ✅ Settings persistence (JSON/YAML file)
+- ✅ Connection countdown timer (auto-connect after 10s)
+- ✅ FPS counter and resolution display
+- ✅ Threaded frame capture and saving
+- ✅ Error handling with user-friendly dialogs
+- ✅ Status notifications
 
-**Estimated time:** 6-8 hours
+**Benefits:**
+- ✅ Much simpler than bidirectional polling
+- ✅ Standard MJPEG protocol (works with any client)
+- ✅ Multiple Python clients can connect simultaneously
+- ✅ No ESP32 code changes needed
+- ✅ Python can still control ESP32 via direct API calls if needed
+- ✅ Professional GUI with settings persistence
+
+**Files to create:**
+- `python_clients/camera_viewer.py` (PyQt6 GUI - main viewer)
+- `python_clients/stream_viewer_simple.py` (OpenCV only)
+- `python_clients/video_recorder.py`
+- `python_clients/photo_capture.py`
+- `python_clients/motion_detector.py`
+- `python_clients/cloud_uploader.py`
+- `python_clients/settings.json` (or settings.yaml)
+- `python_clients/requirements.txt`
+- `python_clients/README.md`
+
+**Estimated time:** 4-6 hours (increased due to GUI and settings persistence)
 
 ---
 
@@ -222,6 +268,14 @@
 **Goal:** Polish and usability improvements
 
 **Tasks:**
+- [ ] **Factory Reset Button (GPIO 19):**
+  - Add button initialization in setup
+  - Monitor button state in background task
+  - Detect long press (10 seconds)
+  - Flash onboard LED 3 times when triggered
+  - Call `settings->resetToDefault()`
+  - Restart ESP32 after reset
+  - Debounce button input
 - [ ] Add mDNS support:
   - Access via `http://camera.local`
   - Implement hostname configuration in settings
@@ -237,9 +291,9 @@
 - [ ] Add system restart endpoint:
   - `POST /api/restart`
   - Requires authentication
-- [ ] Add factory reset mechanism:
-  - Long-press button (if available)
-  - Or web UI button with confirmation
+- [ ] Add factory reset option in web UI:
+  - Button with confirmation dialog
+  - Calls same reset function as hardware button
 - [ ] Improve error handling:
   - WiFi connection failures
   - Camera initialization errors
@@ -302,12 +356,19 @@ esp32s3_ov2640_v3/
 │   ├── html_pages.h               # Embedded HTML pages
 │   ├── camera_control.h           # Camera init and control functions
 │   ├── camera_control.cpp
-│   ├── python_client.h            # Optional Python server polling
-│   ├── python_client.cpp
 │   └── pin_definitions.h          # Hardware pin mappings
 │
-├── server.py                      # Updated Python server (optional)
+├── python_clients/                # Optional Python MJPEG clients
+│   ├── stream_viewer.py           # Display live stream
+│   ├── video_recorder.py          # Record video files
+│   ├── photo_capture.py           # Capture still images
+│   ├── motion_detector.py         # Motion detection example
+│   ├── cloud_uploader.py          # Upload to cloud storage
+│   ├── requirements.txt           # Python dependencies
+│   └── README.md                  # Usage documentation
+│
 ├── IMPLEMENTATION_PLAN.md         # This file
+├── IMPLEMENTATION_GUIDE.md        # Code-based implementation guide
 ├── USER_GUIDE.md                  # To be created
 └── API_REFERENCE.md               # To be created
 ```
@@ -320,7 +381,8 @@ esp32s3_ov2640_v3/
 - ESP32-S3 development board
 - OV2640 camera module
 - USB power supply (5V 2A recommended)
-- Optional: Status LED, Reset button, SD card module
+- Push button on GPIO 19 (factory reset - hold 10 seconds)
+- Optional: Status LED, SD card module
 
 ### **Software Requirements**
 - Arduino IDE 2.x or PlatformIO
@@ -393,10 +455,10 @@ Default Network:
 | 4 | MJPEG Streaming | 4-6 |
 | 5 | Camera Settings UI | 6-8 |
 | 6 | Dual-Core Architecture | 4-6 |
-| 7 | Python Integration | 6-8 |
+| 7 | Python Client Examples | 2-3 |
 | 8 | Additional Features | 8-10 |
 | 9 | Testing & Docs | 8-12 |
-| **Total** | | **52-72 hours** |
+| **Total** | | **48-67 hours** |
 
 ---
 

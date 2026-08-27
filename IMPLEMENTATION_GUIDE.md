@@ -1037,11 +1037,404 @@ void CameraWebServer::sendLoginPage(AsyncWebServerRequest *request) {
 - Use `xTaskCreatePinnedToCore()` in setup()
 - Empty main `loop()` function
 
-### **Phase 7: Python Server Integration**
-- Add polling loop in `networkTask()`
-- HTTP GET to Python server's `/commands` endpoint every 2s
-- Parse JSON response for commands
-- Execute commands (LED flash, resolution change, etc.)
+### **Phase 7: Python Client Examples (Optional - Enhanced with GUI)**
+**Architecture:** Python is now a simple MJPEG client. No ESP32 code changes needed!
+
+**Reference:** Use `/Users/szemy/Workspace/Genican/ESP32P4_video_transmission/tools/rtsp_capture_viewer.py` as template
+
+**Create `python_clients/` directory with enhanced examples:**
+
+#### **camera_viewer.py** - Full-featured PyQt6 GUI viewer
+```python
+#!/usr/bin/env python3
+"""ESP32 Camera Viewer with auto-capture and settings persistence"""
+
+import json
+import os
+from pathlib import Path
+from datetime import datetime
+from queue import Queue, Empty
+import threading
+import time
+
+import cv2
+from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QLineEdit, QDialog, QDialogButtonBox,
+    QMessageBox, QFileDialog
+)
+
+DEFAULT_SETTINGS = {
+    "stream_url": "http://192.168.2.100/stream",
+    "capture_dir": "./captures",
+    "auto_capture_enabled": True,
+    "capture_interval": 1.0,
+    "window_width": 900,
+    "window_height": 760
+}
+
+class Settings:
+    def __init__(self, config_file='settings.json'):
+        self.config_file = Path(config_file)
+        self.data = self.load()
+    
+    def load(self):
+        if self.config_file.exists():
+            with open(self.config_file, 'r') as f:
+                return {**DEFAULT_SETTINGS, **json.load(f)}
+        return DEFAULT_SETTINGS.copy()
+    
+    def save(self):
+        with open(self.config_file, 'w') as f:
+            json.dump(self.data, f, indent=2)
+    
+    def get(self, key, default=None):
+        return self.data.get(key, default)
+    
+    def set(self, key, value):
+        self.data[key] = value
+        self.save()
+
+class VideoLabel(QLabel):
+    def __init__(self):
+        super().__init__("Connecting...")
+        self.source_image = None
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet("background-color: #000; color: white;")
+        self.setMinimumSize(640, 480)
+    
+    def set_image(self, image):
+        self.source_image = image
+        self.refresh_pixmap()
+    
+    def refresh_pixmap(self):
+        if self.source_image:
+            pixmap = QPixmap.fromImage(self.source_image).scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self.setPixmap(pixmap)
+
+class CameraViewer(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.settings = Settings()
+        self.capture = None
+        self.stop_event = threading.Event()
+        self.capture_enabled = self.settings.get('auto_capture_enabled')
+        self.next_capture_time = 0.0
+        self.frame_queue = Queue(maxsize=1)
+        self.save_queue = Queue(maxsize=2)
+        
+        self.setup_ui()
+        self.start_workers()
+    
+    def setup_ui(self):
+        self.setWindowTitle("ESP32 Camera Viewer")
+        self.resize(
+            self.settings.get('window_width'),
+            self.settings.get('window_height')
+        )
+        
+        central = QWidget()
+        layout = QVBoxLayout(central)
+        
+        # Video display
+        self.video = VideoLabel()
+        layout.addWidget(self.video, 1)
+        
+        # Controls
+        controls = QWidget()
+        controls_layout = QHBoxLayout(controls)
+        
+        # Status
+        self.status = QLabel("Connecting...")
+        controls_layout.addWidget(self.status, 1)
+        
+        # Capture button
+        self.capture_button = QPushButton(
+            "Stop Capture" if self.capture_enabled else "Start Capture"
+        )
+        self.capture_button.clicked.connect(self.toggle_capture)
+        controls_layout.addWidget(self.capture_button)
+        
+        # Settings button
+        settings_btn = QPushButton("Settings")
+        settings_btn.clicked.connect(self.show_settings)
+        controls_layout.addWidget(settings_btn)
+        
+        # Quit button
+        quit_btn = QPushButton("Quit")
+        quit_btn.clicked.connect(self.close)
+        controls_layout.addWidget(quit_btn)
+        
+        layout.addWidget(controls)
+        self.setCentralWidget(central)
+        
+        # Poll timer
+        self.poll_timer = QTimer(self)
+        self.poll_timer.setInterval(30)
+        self.poll_timer.timeout.connect(self.poll_workers)
+        self.poll_timer.start()
+    
+    def start_workers(self):
+        self.stream_thread = threading.Thread(
+            target=self.stream_worker, daemon=True
+        )
+        self.save_thread = threading.Thread(
+            target=self.save_worker, daemon=True
+        )
+        self.stream_thread.start()
+        self.save_thread.start()
+    
+    def stream_worker(self):
+        url = self.settings.get('stream_url')
+        self.capture = cv2.VideoCapture(url)
+        
+        if not self.capture.isOpened():
+            QMessageBox.critical(self, "Error", f"Cannot connect to {url}")
+            return
+        
+        frame_times = []
+        while not self.stop_event.is_set():
+            ret, frame = self.capture.read()
+            if not ret:
+                break
+            
+            now = time.time()
+            frame_times.append(now)
+            if len(frame_times) > 30:
+                frame_times.pop(0)
+            
+            fps = len(frame_times) / (frame_times[-1] - frame_times[0]) if len(frame_times) > 1 else 0
+            
+            # Auto-capture
+            if self.capture_enabled and now >= self.next_capture_time:
+                interval = self.settings.get('capture_interval')
+                self.next_capture_time = now + interval
+                try:
+                    self.save_queue.put_nowait(frame.copy())
+                except:
+                    pass
+            
+            # Display
+            try:
+                self.frame_queue.put_nowait((frame, fps))
+            except:
+                pass
+    
+    def save_worker(self):
+        capture_dir = Path(self.settings.get('capture_dir'))
+        capture_dir.mkdir(parents=True, exist_ok=True)
+        
+        while not self.stop_event.is_set():
+            try:
+                frame = self.save_queue.get(timeout=0.1)
+            except Empty:
+                continue
+            
+            if self.capture_enabled:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = capture_dir / f'capture_{timestamp}.jpg'
+                cv2.imwrite(str(filename), frame)
+    
+    def poll_workers(self):
+        try:
+            frame, fps = self.frame_queue.get_nowait()
+            h, w = frame.shape[:2]
+            
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image = QImage(rgb.data, w, h, rgb.strides[0], 
+                          QImage.Format.Format_RGB888).copy()
+            self.video.set_image(image)
+            self.status.setText(f"{w}x{h} | {fps:.1f} FPS")
+        except Empty:
+            pass
+    
+    def toggle_capture(self):
+        self.capture_enabled = not self.capture_enabled
+        self.capture_button.setText(
+            "Stop Capture" if self.capture_enabled else "Start Capture"
+        )
+        self.settings.set('auto_capture_enabled', self.capture_enabled)
+    
+    def show_settings(self):
+        # TODO: Implement settings dialog
+        pass
+    
+    def closeEvent(self, event):
+        self.settings.set('window_width', self.width())
+        self.settings.set('window_height', self.height())
+        self.stop_event.set()
+        if self.capture:
+            self.capture.release()
+        event.accept()
+
+if __name__ == "__main__":
+    import sys
+    app = QApplication(sys.argv)
+    viewer = CameraViewer()
+    viewer.show()
+    sys.exit(app.exec())
+```
+
+#### **settings.json** - Configuration file
+```json
+{
+  "stream_url": "http://192.168.2.100/stream",
+  "capture_dir": "./captures",
+  "auto_capture_enabled": true,
+  "capture_interval": 1.0,
+  "window_width": 900,
+  "window_height": 760,
+  "connection_timeout": 10000,
+  "read_timeout": 3000
+}
+```
+
+#### **requirements.txt**
+```
+opencv-python>=4.8.0
+PyQt6>=6.5.0
+numpy>=1.24.0
+requests>=2.31.0
+```
+
+#### **stream_viewer_simple.py** - Simple OpenCV viewer (no settings)
+```python
+import cv2
+import argparse
+
+def view_stream(stream_url):
+    """Display live MJPEG stream from ESP32"""
+    cap = cv2.VideoCapture(stream_url)
+    
+    if not cap.isOpened():
+        print(f"Failed to connect to {stream_url}")
+        return
+    
+    print("Connected! Press 'q' to quit")
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("Stream ended")
+            break
+        
+        cv2.imshow('ESP32 Camera', frame)
+        
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    
+    cap.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--url', default='http://192.168.2.100/stream')
+    args = parser.parse_args()
+    view_stream(args.url)
+```
+
+#### **README.md for python_clients**
+```markdown
+# ESP32 Camera Python Clients
+
+Professional Python clients for ESP32 camera with MJPEG streaming.
+
+## Features
+
+- **camera_viewer.py**: Full-featured PyQt6 GUI with:
+  - Live stream display
+  - Auto-capture (1 frame/second)
+  - Settings persistence (JSON)
+  - FPS counter
+  - Start/Stop capture toggle
+  
+- **stream_viewer_simple.py**: Lightweight OpenCV viewer
+- **video_recorder.py**: Record video files
+- **motion_detector.py**: Motion detection
+- **cloud_uploader.py**: Upload to cloud
+
+## Installation
+
+```bash
+pip install -r requirements.txt
+```
+
+## Usage
+
+### Full GUI Viewer
+```bash
+python camera_viewer.py
+```
+
+Settings are saved to `settings.json` automatically.
+
+### Simple Viewer
+```bash
+python stream_viewer_simple.py --url http://192.168.2.100/stream
+```
+
+### Record Video
+```bash
+python video_recorder.py --url http://192.168.2.100/stream --output recordings
+```
+
+## Configuration
+
+Edit `settings.json`:
+
+```json
+{
+  "stream_url": "http://192.168.2.100/stream",
+  "capture_dir": "./captures",
+  "auto_capture_enabled": true,
+  "capture_interval": 1.0
+}
+```
+
+## Controlling Camera via API
+
+Python can also control the ESP32 camera:
+
+```python
+import requests
+
+# Change resolution
+requests.post('http://192.168.2.100/api/camera/config', 
+              json={'resolution': 'UXGA', 'quality': 10})
+
+# Get status
+response = requests.get('http://192.168.2.100/api/status')
+print(response.json())
+
+# Capture single frame
+response = requests.get('http://192.168.2.100/capture')
+with open('snapshot.jpg', 'wb') as f:
+    f.write(response.content)
+```
+
+## Reference
+
+Based on ESP32-P4 RTSP Viewer architecture.
+```
+
+**Note:** The complete `camera_viewer.py` implementation should follow the RTSP Viewer pattern at:
+`/Users/szemy/Workspace/Genican/ESP32P4_video_transmission/tools/rtsp_capture_viewer.py`
+
+Key features to implement:
+- Threaded frame capture and saving
+- Queue-based frame passing
+- Connection dialog with countdown
+- Error handling dialogs
+- Status notifications
+- Settings persistence
+
+**No ESP32 code changes needed for Phase 7!**
 
 ### **Phase 8: Additional Features**
 - Add `#include <ESPmDNS.h>`
@@ -1054,6 +1447,7 @@ void CameraWebServer::sendLoginPage(AsyncWebServerRequest *request) {
 - Test multiple browser connections
 - Monitor serial output for errors
 - Test settings persistence with power cycles
+- Test Python clients (if implemented)
 - Create USER_GUIDE.md with screenshots
 
 ---
