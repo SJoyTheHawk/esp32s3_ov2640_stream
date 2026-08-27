@@ -8,6 +8,8 @@ const char* const CameraSettings::NVS_NAMESPACE = "camera";
 // with the C++11 toolchain used by many Arduino ESP32 installations.
 constexpr char CameraSettings::DefaultValues::USERNAME[32];
 constexpr char CameraSettings::DefaultValues::PASSWORD[32];
+constexpr char CameraSettings::DefaultValues::USER_USERNAME[32];
+constexpr char CameraSettings::DefaultValues::USER_PASSWORD[32];
 constexpr byte CameraSettings::DefaultValues::STATIC_IP[4];
 constexpr byte CameraSettings::DefaultValues::GATEWAY[4];
 constexpr byte CameraSettings::DefaultValues::SUBNET[4];
@@ -26,6 +28,10 @@ void CameraSettings::setDefaults() {
     strncpy(password, DefaultValues::PASSWORD, sizeof(password));
     username[sizeof(username) - 1] = '\0';
     password[sizeof(password) - 1] = '\0';
+    strncpy(userUsername, DefaultValues::USER_USERNAME, sizeof(userUsername));
+    strncpy(userPassword, DefaultValues::USER_PASSWORD, sizeof(userPassword));
+    userUsername[sizeof(userUsername) - 1] = '\0';
+    userPassword[sizeof(userPassword) - 1] = '\0';
 
     useDHCP = DefaultValues::USE_DHCP;
     memcpy(staticIP, DefaultValues::STATIC_IP, sizeof(staticIP));
@@ -75,6 +81,8 @@ bool CameraSettings::initializeNVS() {
     bool ok = true;
     prefs.putString("username", DefaultValues::USERNAME);
     prefs.putString("password", DefaultValues::PASSWORD);
+    prefs.putString("userUsername", DefaultValues::USER_USERNAME);
+    prefs.putString("userPassword", DefaultValues::USER_PASSWORD);
     ok &= prefs.putBool("useDHCP", DefaultValues::USE_DHCP);
     ok &= prefs.putBytes("staticIP", DefaultValues::STATIC_IP, sizeof(staticIP)) == sizeof(staticIP);
     ok &= prefs.putBytes("gateway", DefaultValues::GATEWAY, sizeof(gateway)) == sizeof(gateway);
@@ -95,6 +103,7 @@ bool CameraSettings::initializeNVS() {
     prefs.putString("deviceName", DefaultValues::DEVICE_NAME);
     prefs.putString("mdnsHost", DefaultValues::MDNS_HOSTNAME);
     ok &= prefs.isKey("username") && prefs.isKey("password") &&
+          prefs.isKey("userUsername") && prefs.isKey("userPassword") &&
           prefs.isKey("wifiSSID") && prefs.isKey("wifiPass") &&
           prefs.isKey("pyIP") && prefs.isKey("deviceName") && prefs.isKey("mdnsHost");
     if (ok) {
@@ -131,6 +140,10 @@ void CameraSettings::readFromNVS() {
     value.toCharArray(username, sizeof(username));
     value = prefs.getString("password", DefaultValues::PASSWORD);
     value.toCharArray(password, sizeof(password));
+    value = prefs.getString("userUsername", DefaultValues::USER_USERNAME);
+    value.toCharArray(userUsername, sizeof(userUsername));
+    value = prefs.getString("userPassword", DefaultValues::USER_PASSWORD);
+    value.toCharArray(userPassword, sizeof(userPassword));
 
     useDHCP = prefs.getBool("useDHCP", DefaultValues::USE_DHCP);
     if (prefs.getBytesLength("staticIP") == sizeof(staticIP)) {
@@ -207,6 +220,22 @@ bool CameraSettings::writeUsername(const char* user, size_t length) {
 
 bool CameraSettings::writePassword(const char* pass, size_t length) {
     return writeStringSetting("password", pass, length, password, sizeof(password));
+}
+
+bool CameraSettings::writeAdminUsername(const char* user, size_t length) {
+    return writeUsername(user, length);
+}
+
+bool CameraSettings::writeAdminPassword(const char* pass, size_t length) {
+    return writePassword(pass, length);
+}
+
+bool CameraSettings::writeUserUsername(const char* user, size_t length) {
+    return writeStringSetting("userUsername", user, length, userUsername, sizeof(userUsername));
+}
+
+bool CameraSettings::writeUserPassword(const char* pass, size_t length) {
+    return writeStringSetting("userPassword", pass, length, userPassword, sizeof(userPassword));
 }
 
 bool CameraSettings::writeNetworkSettings(bool dhcp, const byte ip[4], const byte gw[4], const byte sn[4]) {

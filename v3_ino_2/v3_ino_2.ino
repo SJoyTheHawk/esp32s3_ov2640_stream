@@ -23,6 +23,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include <cstdlib>
+#include <cstring>
 
 // Set to 1 temporarily to run the Phase 1 persistence test. Set back to 0
 // before normal camera operation. Reflashing does not erase NVS contents.
@@ -125,9 +126,14 @@ static void cameraTask(void*) {
 }
 
 static void networkTask(void*) {
+    unsigned long lastWifiAttempt = 0;
     for (;;) {
         webServer.loop();
-        if (WiFi.status() != WL_CONNECTED) connectWiFi();
+        if (WiFi.status() != WL_CONNECTED &&
+            static_cast<unsigned long>(millis() - lastWifiAttempt) >= 10000UL) {
+            lastWifiAttempt = millis();
+            connectWiFi();
+        }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
@@ -233,7 +239,9 @@ void connectWiFi() {
     }
 
     Serial0.printf("[WIFI] Connecting to %s", settings.wifiSSID);
-    WiFi.disconnect(true);
+    // Keep the station configuration intact while recovering from transient
+    // disconnects. Erasing it on every retry can make reconnection unstable.
+    WiFi.disconnect(false);
     delay(100);
     WiFi.mode(WIFI_STA);
     if (settings.useDHCP) {
@@ -332,6 +340,11 @@ void setup() {
 
 #if NVS_TEST_WRITE
     Serial0.println("[NVS TEST] Writing test values...");
+    Serial0.printf("WiFi settings: %d\n",
+                   settings.writeWiFiSettings(CameraSettings::DefaultValues::WIFI_SSID,
+                                              strlen(CameraSettings::DefaultValues::WIFI_SSID),
+                                              CameraSettings::DefaultValues::WIFI_PASSWORD,
+                                              strlen(CameraSettings::DefaultValues::WIFI_PASSWORD)));
     Serial0.printf("deviceName: %d\n",
                    settings.writeDeviceName("PersistTest", 11));
     Serial0.printf("cameraQuality: %d\n",

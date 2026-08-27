@@ -8,6 +8,7 @@
 
 class CameraWebServer {
 public:
+    enum class AuthLevel { NONE, USER, ADMIN };
     CameraWebServer(uint16_t port, CameraSettings* settings);
     ~CameraWebServer();
 
@@ -23,8 +24,10 @@ private:
 
     AsyncWebServer server_;
     CameraSettings* settings_;
-    String authToken_;
-    unsigned long lastActivityMs_;
+    String adminAuthToken_;
+    String userAuthToken_;
+    unsigned long adminLastActivityMs_;
+    unsigned long userLastActivityMs_;
     unsigned long reconnectAtMs_;
     std::function<void()> reconnectCallback_;
     std::function<size_t(uint8_t*, size_t)> frameCaptureCallback_;
@@ -32,7 +35,9 @@ private:
     std::function<bool(uint8_t, uint8_t, int8_t, int8_t, int8_t, bool, bool)> cameraConfigCallback_;
 
     String generateToken();
+    AuthLevel getAuthLevel(AsyncWebServerRequest* request);
     bool isAuthenticated(AsyncWebServerRequest* request);
+    bool isAdminAuthenticated(AsyncWebServerRequest* request);
     void sendJson(AsyncWebServerRequest* request, int status, const char* message);
     void sendUnauthorized(AsyncWebServerRequest* request);
     void handleRoot(AsyncWebServerRequest* request);

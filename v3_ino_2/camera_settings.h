@@ -12,12 +12,16 @@ public:
     struct DefaultValues {
         static constexpr char USERNAME[32] = "admin";
         static constexpr char PASSWORD[32] = "admin";
+        static constexpr char USER_USERNAME[32] = "user";
+        static constexpr char USER_PASSWORD[32] = "user";
 
         static constexpr bool USE_DHCP = true;
         static constexpr byte STATIC_IP[4] = {192, 168, 2, 100};
         static constexpr byte GATEWAY[4] = {192, 168, 2, 1};
         static constexpr byte SUBNET[4] = {255, 255, 255, 0};
 
+        // static constexpr char WIFI_SSID[32] = "";
+        // static constexpr char WIFI_PASSWORD[32] = "";
         static constexpr char WIFI_SSID[32] = "";
         static constexpr char WIFI_PASSWORD[32] = "";
 
@@ -41,6 +45,8 @@ public:
 
     char username[32];
     char password[32];
+    char userUsername[32];
+    char userPassword[32];
 
     bool useDHCP;
     byte staticIP[4];
@@ -75,6 +81,10 @@ public:
 
     bool writeUsername(const char* user, size_t length);
     bool writePassword(const char* pass, size_t length);
+    bool writeAdminUsername(const char* user, size_t length);
+    bool writeAdminPassword(const char* pass, size_t length);
+    bool writeUserUsername(const char* user, size_t length);
+    bool writeUserPassword(const char* pass, size_t length);
 
     bool writeNetworkSettings(bool dhcp, const byte ip[4], const byte gw[4], const byte sn[4]);
     bool writeDHCPSetting(bool dhcp);

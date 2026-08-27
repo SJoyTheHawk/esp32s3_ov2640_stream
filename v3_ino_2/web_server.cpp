@@ -6,7 +6,8 @@
 #include "html_pages.h"
 
 CameraWebServer::CameraWebServer(uint16_t port, CameraSettings* settings)
-    : server_(port), settings_(settings), lastActivityMs_(0), reconnectAtMs_(0) {
+    : server_(port), settings_(settings), adminLastActivityMs_(0),
+      userLastActivityMs_(0), reconnectAtMs_(0) {
     randomSeed(static_cast<unsigned long>(micros()));
 }
 
@@ -53,11 +54,11 @@ void CameraWebServer::begin() {
 }
 
 void CameraWebServer::loop() {
-    if (authToken_.length() > 0 &&
-        static_cast<unsigned long>(millis() - lastActivityMs_) >= COOKIE_TIMEOUT_MS) {
-        authToken_ = "";
-        lastActivityMs_ = 0;
-        Serial.println("[WEB] Session expired");
+    if (adminAuthToken_.length() > 0 && static_cast<unsigned long>(millis() - adminLastActivityMs_) >= COOKIE_TIMEOUT_MS) {
+        adminAuthToken_ = ""; adminLastActivityMs_ = 0; Serial.println("[WEB] Admin session expired");
+    }
+    if (userAuthToken_.length() > 0 && static_cast<unsigned long>(millis() - userLastActivityMs_) >= COOKIE_TIMEOUT_MS) {
+        userAuthToken_ = ""; userLastActivityMs_ = 0; Serial.println("[WEB] User session expired");
     }
 
     if (reconnectAtMs_ != 0 &&
@@ -96,25 +97,31 @@ String CameraWebServer::generateToken() {
     return token;
 }
 
-bool CameraWebServer::isAuthenticated(AsyncWebServerRequest* request) {
-    if (authToken_.length() == 0 || !request->hasHeader("Cookie")) {
-        return false;
-    }
-
+CameraWebServer::AuthLevel CameraWebServer::getAuthLevel(AsyncWebServerRequest* request) {
+    if (!request || !request->hasHeader("Cookie")) return AuthLevel::NONE;
     const String cookie = request->header("Cookie");
     const int start = cookie.indexOf("auth_token=");
-    if (start < 0) return false;
-
+    if (start < 0) return AuthLevel::NONE;
     const int valueStart = start + 11;
     int valueEnd = cookie.indexOf(';', valueStart);
     if (valueEnd < 0) valueEnd = cookie.length();
     const String token = cookie.substring(valueStart, valueEnd);
-    if (token != authToken_ || static_cast<unsigned long>(millis() - lastActivityMs_) >= COOKIE_TIMEOUT_MS) {
-        return false;
+    const unsigned long now = millis();
+    if (token == adminAuthToken_ && adminAuthToken_.length() > 0 && now - adminLastActivityMs_ < COOKIE_TIMEOUT_MS) {
+        adminLastActivityMs_ = now; return AuthLevel::ADMIN;
     }
+    if (token == userAuthToken_ && userAuthToken_.length() > 0 && now - userLastActivityMs_ < COOKIE_TIMEOUT_MS) {
+        userLastActivityMs_ = now; return AuthLevel::USER;
+    }
+    return AuthLevel::NONE;
+}
 
-    lastActivityMs_ = millis();
-    return true;
+bool CameraWebServer::isAuthenticated(AsyncWebServerRequest* request) {
+    return getAuthLevel(request) != AuthLevel::NONE;
+}
+
+bool CameraWebServer::isAdminAuthenticated(AsyncWebServerRequest* request) {
+    return getAuthLevel(request) == AuthLevel::ADMIN;
 }
 
 void CameraWebServer::sendJson(AsyncWebServerRequest* request, int status, const char* message) {
@@ -142,13 +149,17 @@ void CameraWebServer::handleLogin(AsyncWebServerRequest* request) {
 
     const String username = request->arg("username");
     const String password = request->arg("password");
-    if (username != settings_->username || password != settings_->password) {
+    AuthLevel level = AuthLevel::NONE;
+    if (username == settings_->username && password == settings_->password) level = AuthLevel::ADMIN;
+    else if (username == settings_->userUsername && password == settings_->userPassword) level = AuthLevel::USER;
+    if (level == AuthLevel::NONE) {
         sendJson(request, 401, "Invalid username or password");
         return;
     }
 
-    authToken_ = generateToken();
-    lastActivityMs_ = millis();
+    const String token = generateToken();
+    if (level == AuthLevel::ADMIN) { adminAuthToken_ = token; adminLastActivityMs_ = millis(); }
+    else { userAuthToken_ = token; userLastActivityMs_ = millis(); }
     StaticJsonDocument<256> document;
     document["status"] = "success";
     document["message"] = "Login successful";
@@ -157,7 +168,7 @@ void CameraWebServer::handleLogin(AsyncWebServerRequest* request) {
     serializeJson(document, body);
 
     AsyncWebServerResponse* response = request->beginResponse(200, "application/json", body);
-    response->addHeader("Set-Cookie", "auth_token=" + authToken_ +
+    response->addHeader("Set-Cookie", "auth_token=" + token +
                         "; Max-Age=" + String(COOKIE_TIMEOUT_MS / 1000UL) +
                         "; Path=/; HttpOnly; SameSite=Strict");
     request->send(response);
@@ -165,8 +176,8 @@ void CameraWebServer::handleLogin(AsyncWebServerRequest* request) {
 }
 
 void CameraWebServer::handleLogout(AsyncWebServerRequest* request) {
-    authToken_ = "";
-    lastActivityMs_ = 0;
+    if (getAuthLevel(request) == AuthLevel::ADMIN) { adminAuthToken_ = ""; adminLastActivityMs_ = 0; }
+    else if (getAuthLevel(request) == AuthLevel::USER) { userAuthToken_ = ""; userLastActivityMs_ = 0; }
     AsyncWebServerResponse* response = request->beginResponse(200, "application/json",
                                                                "{\"status\":\"success\",\"message\":\"Logged out\"}");
     response->addHeader("Set-Cookie", "auth_token=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict");
@@ -175,18 +186,22 @@ void CameraWebServer::handleLogout(AsyncWebServerRequest* request) {
 }
 
 void CameraWebServer::handleChangePassword(AsyncWebServerRequest* request) {
-    if (!isAuthenticated(request)) {
+    const AuthLevel level = getAuthLevel(request);
+    if (level == AuthLevel::NONE) {
         sendUnauthorized(request);
         return;
     }
-    if (!request->hasArg("current_password") || !request->hasArg("new_password")) {
-        sendJson(request, 400, "Missing current or new password");
+    if (!request->hasArg("current_password") || !request->hasArg("new_password") ||
+        !request->hasArg("confirm_password")) {
+        sendJson(request, 400, "Missing current, new, or confirmation password");
         return;
     }
 
     const String current = request->arg("current_password");
     const String next = request->arg("new_password");
-    if (current != String(settings_->password)) {
+    const String confirmation = request->arg("confirm_password");
+    const char* currentPassword = level == AuthLevel::ADMIN ? settings_->password : settings_->userPassword;
+    if (current != String(currentPassword)) {
         sendJson(request, 401, "Current password is incorrect");
         return;
     }
@@ -194,7 +209,14 @@ void CameraWebServer::handleChangePassword(AsyncWebServerRequest* request) {
         sendJson(request, 400, "Password must be 4-31 characters");
         return;
     }
-    if (!settings_->writePassword(next.c_str(), next.length())) {
+    if (next != confirmation) {
+        sendJson(request, 400, "New passwords do not match");
+        return;
+    }
+    const bool saved = level == AuthLevel::ADMIN
+        ? settings_->writeAdminPassword(next.c_str(), next.length())
+        : settings_->writeUserPassword(next.c_str(), next.length());
+    if (!saved) {
         sendJson(request, 500, "Failed to save password");
         return;
     }
@@ -210,8 +232,9 @@ bool CameraWebServer::parseIPAddress(const String& value, byte destination[4]) {
 }
 
 void CameraWebServer::handleGetSettings(AsyncWebServerRequest* request) {
-    if (!isAuthenticated(request)) {
-        sendUnauthorized(request);
+    if (!isAdminAuthenticated(request)) {
+        if (isAuthenticated(request)) sendJson(request, 403, "Admin access required");
+        else sendUnauthorized(request);
         return;
     }
 
@@ -238,8 +261,9 @@ void CameraWebServer::handleGetSettings(AsyncWebServerRequest* request) {
 }
 
 void CameraWebServer::handlePostSettings(AsyncWebServerRequest* request) {
-    if (!isAuthenticated(request)) {
-        sendUnauthorized(request);
+    if (!isAdminAuthenticated(request)) {
+        if (isAuthenticated(request)) sendJson(request, 403, "Admin access required");
+        else sendUnauthorized(request);
         return;
     }
     if (!request->hasArg("wifi_ssid") || !request->hasArg("use_dhcp")) {
@@ -333,6 +357,15 @@ void CameraWebServer::handleGetStatus(AsyncWebServerRequest* request) {
     document["wifi_ssid"] = connected ? WiFi.SSID() : settings_->wifiSSID;
     document["rssi"] = connected ? WiFi.RSSI() : 0;
     document["device_name"] = settings_->deviceName;
+    document["auth_level"] = getAuthLevel(request) == AuthLevel::ADMIN ? "admin" : "user";
+    document["camera_resolution"] = settings_->cameraResolution;
+    document["camera_quality"] = settings_->cameraQuality;
+    document["frame_rate"] = settings_->frameRate;
+    document["brightness"] = settings_->brightness;
+    document["contrast"] = settings_->contrast;
+    document["saturation"] = settings_->saturation;
+    document["vertical_flip"] = settings_->verticalFlip;
+    document["horizontal_mirror"] = settings_->horizontalMirror;
     String body;
     serializeJson(document, body);
     request->send(200, "application/json", body);
