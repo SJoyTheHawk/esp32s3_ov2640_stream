@@ -1,0 +1,14 @@
+{
+  "stream_url": "http://192.168.1.201/stream",
+  "username": "admin",
+  "password": "abcd1234",
+  "capture_dir": "./captures",
+  "auto_capture_enabled": false,
+  "capture_interval": 1.0,
+  "last_window_size": [
+    976,
+    760
+  ],
+  "connection_timeout": 10,
+  "read_timeout": 3
+}

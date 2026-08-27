@@ -29,6 +29,8 @@ IMPLEMENTATION_PLAN.md  Phased implementation plan
 PHASE2_BENCHMARK.md     Web authentication test procedure
 PHASE3_BENCHMARK.md     Network settings and status test procedure
 PHASE5_BENCHMARK.md     Camera settings UI and API test procedure
+python_clients/         Optional Python MJPEG viewer and utility scripts
+PHASE7_BENCHMARK.md     Python client test procedure
 ```
 
 Captured photos, recordings, backup copies, Python caches, and local build

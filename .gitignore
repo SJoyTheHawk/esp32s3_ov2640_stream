@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+**/.venv/
 
 # Captured media and recordings
 photos/
@@ -14,6 +15,11 @@ videos2/
 *.avi
 *.mp4
 *.mov
+*.mjpeg
+
+# Python client runtime output
+python_clients/captures/
+python_clients/recordings/
 
 # Local backups and scratch copies
 *_bk.py

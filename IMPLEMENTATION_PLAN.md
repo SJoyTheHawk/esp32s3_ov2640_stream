@@ -28,7 +28,8 @@
 - [x] Create `CameraSettings` class based on Gate's `Setting` class
 - [x] Define settings structure:
   ```cpp
-  - username / password (login credentials)
+  - adminUsername / adminPassword (full system access)
+  - userUsername / userPassword (camera-only access)
   - wifiSSID / wifiPassword
   - useDHCP / staticIP / gateway / subnet
   - cameraResolution (QVGA/VGA/SVGA/XGA/UXGA)
@@ -37,6 +38,7 @@
   - brightness / contrast / saturation
   - verticalFlip / horizontalMirror
   - pythonServerEnabled / pythonServerIP
+  - isWiFiConfigured (bool flag for first boot detection)
   ```
 - [x] Implement Preferences read/write methods
 - [x] Add `initializeNVS()` to set defaults on first boot
@@ -52,19 +54,33 @@
 ---
 
 ### **Phase 2: Web Server + Authentication**
-**Goal:** Port Gate's login system and AsyncWebServer structure
+**Goal:** Port Gate's login system with dual-tier authentication (Admin + User roles)
 
 **Tasks:**
 - [x] Setup AsyncWebServer on port 80
+- [x] Implement **dual-tier authentication system**:
+  - **Admin role**: Full access (WiFi settings, network config, all passwords, camera settings, stream)
+  - **User role**: Camera-only access (stream viewing, camera settings, own password change)
 - [x] Implement authentication endpoints:
-  - `POST /api/login` - validate credentials, set cookie
+  - `POST /api/login` - validate credentials (admin or user), set role-based cookie
   - `POST /api/logout` - clear session cookie
-  - `POST /api/change-password` - update password in NVS
-- [x] Implement cookie-based session management (30min timeout)
-- [x] Create `isAuthenticated()` middleware function
+  - `POST /api/change-password` - update password (users: own only, admin: any)
+- [x] Implement cookie-based session management (30min timeout, separate tokens per role)
+- [x] Create authentication middleware functions:
+  - `isAuthenticated()` - checks for any valid login (admin or user)
+  - `isAdminAuthenticated()` - checks for admin-only access
+  - `getAuthLevel()` - returns current user's access level
 - [x] Port Gate's login HTML page
 - [x] Port Gate's main configuration HTML page (remove gate-specific parts)
-- [ ] Test login/logout flow (follow `PHASE2_BENCHMARK.md` on ESP32-S3 hardware)
+- [ ] Add role-based UI visibility (hide admin-only sections for user role)
+- [ ] Test login/logout flow for both roles (follow `PHASE2_BENCHMARK.md` on ESP32-S3 hardware)
+
+**Access Control:**
+- Stream endpoints (`/stream`, `/capture`): Admin + User ✅
+- Camera config (`/api/camera/config`): Admin + User ✅
+- Settings endpoints (`/api/settings`): Admin only ✅
+- System endpoints (`/api/restart`, `/api/factory-reset`): Admin only ✅
+- Password change: Admin (all), User (own only) ✅
 
 **Files to create:**
 - `web_server.h`
@@ -195,8 +211,8 @@
 **Reference:** `/Users/szemy/Workspace/Genican/ESP32P4_video_transmission/tools/rtsp_capture_viewer.py` - Use as template for GUI viewer
 
 **Tasks:**
-- [ ] Create `python_clients/` directory
-- [ ] Create `camera_viewer.py` - PyQt6 GUI viewer with features:
+- [x] Create `python_clients/` directory
+- [x] Create `camera_viewer.py` - PyQt6 GUI viewer with features:
   - Live MJPEG stream display
   - Auto-capture timer (1 frame per second)
   - Start/Stop capture toggle button
@@ -205,7 +221,7 @@
   - Connection dialog with 10-second countdown
   - Capture directory configuration
   - Status notifications
-- [ ] Create `settings.json` - Store configuration:
+- [x] Create `settings.json` - Store configuration:
   ```json
   {
     "stream_url": "http://192.168.2.100/stream",
@@ -215,12 +231,12 @@
     "last_window_size": [900, 760]
   }
   ```
-- [ ] Create `stream_viewer_simple.py` - Simple OpenCV viewer (no GUI)
-- [ ] Create `video_recorder.py` - Record video from MJPEG stream
-- [ ] Create `photo_capture.py` - Manual capture with keyboard shortcuts
-- [ ] Create `motion_detector.py` - Motion detection example
-- [ ] Create `cloud_uploader.py` - Upload frames to cloud storage
-- [ ] Create `requirements.txt` - Python dependencies:
+- [x] Create `stream_viewer_simple.py` - Simple OpenCV viewer (no GUI)
+- [x] Create `video_recorder.py` - Record video from MJPEG stream
+- [x] Create `photo_capture.py` - Manual capture with keyboard shortcuts
+- [x] Create `motion_detector.py` - Motion detection example
+- [x] Create `cloud_uploader.py` - Upload frames to cloud storage
+- [x] Create `requirements.txt` - Python dependencies:
   ```
   opencv-python>=4.8.0
   PyQt6>=6.5.0
@@ -228,7 +244,7 @@
   requests>=2.31.0
   numpy>=1.24.0
   ```
-- [ ] Create `README.md` - Documentation for Python clients
+- [x] Create `README.md` - Documentation for Python clients
 - [ ] Test each script with ESP32 stream
 
 **Key Features from RTSP Viewer to Implement:**
@@ -260,50 +276,289 @@
 - `python_clients/requirements.txt`
 - `python_clients/README.md`
 
-**Estimated time:** 4-6 hours (increased due to GUI and settings persistence)
+**Estimated time:** 2-3 hours (simple example scripts for reference)
 
 ---
 
-### **Phase 8: Additional Features**
-**Goal:** Polish and usability improvements
+### **Phase 7B: Professional Camera Viewer Application (PyQt6)**
+**Goal:** Create a unified, beautiful camera viewer application with advanced capture features
+
+**UI Design Requirements:**
+- Modern, clean interface with dark theme
+- Large live preview window
+- Capture controls panel with visual feedback
+- Settings panel with save directory and frame rate configuration
+- Status bar with FPS, resolution, connection status
+
+**Key Features:**
+
+**1. Live Preview:**
+- Real-time MJPEG stream display
+- FPS counter overlay
+- Resolution display
+- Connection status indicator
+
+**2. Capture Modes:**
+- **Single Shot Button:**
+  - Single click → capture one frame
+  - Save with timestamp filename
+  - Visual feedback (flash effect)
+  
+- **Burst Mode Button (Long Press):**
+  - Long press and hold → "charging" animation (progress ring/bar)
+  - Captures at configurable rate (default 5 fps)
+  - Saves all frames as individual photos
+  - Release to stop
+  - Shows frame count during burst
+  - Visual countdown/charging effect
+  
+- **Video Recording Button:**
+  - Click to start/stop video recording
+  - Recording indicator (red dot)
+  - Duration timer display
+  - Prompt for save location and filename before starting
+  - Codec selection (MJPEG/H.264)
+
+**3. Settings Panel:**
+- Stream URL input
+- Save directory browser (with Browse button)
+- Burst capture rate slider (1-30 fps)
+- Video codec dropdown
+- Auto-reconnect toggle
+- Theme selector (Dark/Light)
+
+**4. File Management:**
+- Smart filename generation:
+  - Photos: `capture_YYYYMMDD_HHMMSS.jpg`
+  - Burst: `burst_YYYYMMDD_HHMMSS_001.jpg`, `_002.jpg`, etc.
+  - Video: User-specified name with timestamp option
+- Directory structure creation
+- Duplicate name handling
+- Recent files list
+
+**5. Visual Feedback:**
+- "Charging" animation for burst mode:
+  - Circular progress indicator around button
+  - Color transition (blue → green → yellow)
+  - Haptic-style visual pulsing
+  - Frame counter inside circle
+- Toast notifications for captures
+- Success/error dialogs
+- Connection status animations
 
 **Tasks:**
-- [ ] **Factory Reset Button (GPIO 19):**
-  - Add button initialization in setup
-  - Monitor button state in background task
-  - Detect long press (10 seconds)
-  - Flash onboard LED 3 times when triggered
-  - Call `settings->resetToDefault()`
-  - Restart ESP32 after reset
-  - Debounce button input
-- [ ] Add mDNS support:
-  - Access via `http://camera.local`
-  - Implement hostname configuration in settings
-- [ ] Add OTA (Over-The-Air) updates:
-  - ArduinoOTA library
-  - Password-protected
-  - Update via `camera.local` or IP
-- [ ] Add status LED indicators:
-  - WiFi connecting (slow blink)
-  - WiFi connected (solid)
-  - Streaming active (fast blink)
-  - Error state (fast double-blink)
-- [ ] Add system restart endpoint:
-  - `POST /api/restart`
-  - Requires authentication
-- [ ] Add factory reset option in web UI:
-  - Button with confirmation dialog
-  - Calls same reset function as hardware button
-- [ ] Improve error handling:
-  - WiFi connection failures
-  - Camera initialization errors
-  - Settings validation
-- [ ] Add web UI enhancements:
-  - Real-time FPS display
-  - Connection quality indicator
-  - Storage usage (if SD card added)
+- [ ] Design main window layout (QMainWindow with dock widgets)
+- [ ] Implement stream viewer widget with OpenCV/QImage conversion
+- [ ] Create capture button widget with press-and-hold detection
+- [ ] Implement burst mode with charging animation (QPainter custom widget)
+- [ ] Create video recording with codec selection
+- [ ] Implement file save dialogs with smart naming
+- [ ] Create settings panel with persistence
+- [ ] Add status bar with indicators
+- [ ] Implement threading for:
+  - Stream reading (non-blocking)
+  - Frame saving (background queue)
+  - Video encoding (separate thread)
+- [ ] Add keyboard shortcuts:
+  - `Space` - Single capture
+  - `B` - Toggle burst mode
+  - `V` - Start/stop video
+  - `S` - Settings panel
+  - `Q` - Quit
+- [ ] Implement error handling and reconnection
+- [ ] Add dark theme with custom styling (QSS)
+- [ ] Create configuration file (JSON)
 
-**Estimated time:** 8-10 hours
+**UI Components:**
+```
+┌─────────────────────────────────────────────────┐
+│  ESP32 Camera Viewer                    [_][□][X]│
+├─────────────────────────────────────────────────┤
+│ Stream: http://192.168.2.100/stream    [Browse] │
+├─────────────────────────────────────────────────┤
+│                                                 │
+│                                                 │
+│            Live Preview (800x600)               │
+│                                                 │
+│          [FPS: 20] [Resolution: SVGA]           │
+│                                                 │
+├─────────────────────────────────────────────────┤
+│  [📷 Capture] [⏺ Burst] [🎥 Record] [⚙ Settings]│
+├─────────────────────────────────────────────────┤
+│ ● Connected | Saved: 15 photos, 2 videos       │
+└─────────────────────────────────────────────────┘
+```
+
+**Burst Mode Animation:**
+```
+Normal:        Charging (0.5s):    Charged (1s):
+  [📷]            [📷]               [📷]
+                 ◐ 3                ● 12
+              (blue ring)        (green ring)
+```
+
+**Technology Stack:**
+- PyQt6 for GUI framework
+- OpenCV for stream reading and image processing
+- NumPy for frame manipulation
+- Threading/QThread for concurrency
+- JSON for configuration
+- QTimer for animations
+
+**Configuration File Structure:**
+```json
+{
+  "stream": {
+    "url": "http://192.168.2.100/stream",
+    "auto_reconnect": true,
+    "reconnect_delay": 5
+  },
+  "capture": {
+    "save_directory": "./captures",
+    "burst_fps": 5,
+    "photo_format": "jpg",
+    "photo_quality": 95
+  },
+  "video": {
+    "codec": "MJPEG",
+    "fps": 20,
+    "default_name": "recording"
+  },
+  "ui": {
+    "theme": "dark",
+    "window_geometry": [100, 100, 1000, 800],
+    "show_fps": true,
+    "show_resolution": true
+  }
+}
+```
+
+**Files to create:**
+- `python_clients/professional_viewer/camera_viewer_pro.py` - Main application
+- `python_clients/professional_viewer/widgets/stream_widget.py` - Live preview widget
+- `python_clients/professional_viewer/widgets/burst_button.py` - Custom burst button with animation
+- `python_clients/professional_viewer/widgets/capture_controls.py` - Control panel
+- `python_clients/professional_viewer/widgets/settings_dialog.py` - Settings dialog
+- `python_clients/professional_viewer/workers/stream_worker.py` - Stream reading thread
+- `python_clients/professional_viewer/workers/save_worker.py` - File saving thread
+- `python_clients/professional_viewer/workers/video_worker.py` - Video encoding thread
+- `python_clients/professional_viewer/utils/config_manager.py` - Config file handler
+- `python_clients/professional_viewer/utils/file_manager.py` - Filename generation
+- `python_clients/professional_viewer/styles/dark_theme.qss` - Dark theme stylesheet
+- `python_clients/professional_viewer/config.json` - Default configuration
+- `python_clients/professional_viewer/requirements.txt` - Dependencies
+- `python_clients/professional_viewer/README.md` - Documentation
+- `python_clients/professional_viewer/icon.png` - Application icon
+
+**Estimated time:** 12-16 hours (comprehensive professional application)
+
+---
+
+### **Phase 8: Additional Features + WiFi Provisioning**
+**Goal:** Implement advanced features, UX improvements, first-time setup mode, and finalize dual-tier authentication
+
+**Note:** Dual-tier authentication (Admin/User roles) is already implemented in Phase 1 (storage) and Phase 2 (web server). Phase 8 completes the integration by:
+- Updating WiFi provisioning to set both credential sets during first-time setup
+- Ensuring all endpoints enforce proper access control
+- Adding role-based UI visibility in web pages
+
+**Tasks:**
+
+**8.0 Dual Authentication Integration:**
+- [ ] Update WiFi provisioning setup page to collect both admin and user credentials
+- [ ] Verify all API endpoints enforce correct access levels (admin-only vs any-authenticated)
+- [ ] Add role-based UI elements (hide admin sections for user role)
+- [ ] Test both authentication levels thoroughly
+
+**8.1 Factory Reset Button (GPIO 19):**
+- [ ] Add button initialization in setup with internal pull-up
+- [ ] Monitor button state in background task (non-blocking)
+- [ ] Detect long press (10 seconds continuous hold)
+- [ ] Flash onboard LED 3 times when triggered
+- [ ] Reset all NVS settings to defaults
+- [ ] Set `isWiFiConfigured = false` to trigger AP mode
+- [ ] Restart ESP32 after reset
+- [ ] Debounce button input properly
+
+**8.2 WiFi Provisioning Mode (AP + Captive Portal):**
+- [ ] Check `isWiFiConfigured` flag on boot
+- [ ] If not configured (or after factory reset), start in AP mode:
+  - SSID: `ESP32-CAM-Setup`
+  - Password: `12345678` (or open network for easier access)
+  - IP: `192.168.4.1` (ESP32 default AP IP)
+- [ ] Implement DNS server to redirect all domains to `192.168.4.1` (captive portal behavior)
+- [ ] Implement mDNS: `camera.local` → `192.168.4.1`
+- [ ] Create simplified setup web page:
+  - WiFi network scanner (list available SSIDs with signal strength bars)
+  - SSID input field with dropdown from scan results
+  - Password input field (show/hide toggle)
+  - Admin username/password setup fields
+  - "Connect" button with visual feedback (spinner during connection)
+  - Connection status messages
+- [ ] Handle WiFi credentials submission:
+  - Validate inputs (non-empty SSID, password length)
+  - Save credentials to NVS
+  - Set `isWiFiConfigured = true`
+  - Attempt connection to configured WiFi network
+  - Wait up to 10 seconds for connection
+  - If successful, show success message and reboot into Station mode after 3s
+  - If failed, stay in AP mode and display error message with retry option
+- [ ] Add timeout logic: stay in AP mode for 10 minutes max, then try Station mode anyway
+- [ ] Add LED indicator for AP mode status (if available - slow double-blink pattern)
+- [ ] Test captive portal auto-popup on iOS and Android devices
+
+**8.3 mDNS Support:**
+- [ ] Implement mDNS responder in Station mode
+- [ ] Access via `http://camera.local` (or configurable hostname)
+- [ ] Add hostname configuration option in settings
+- [ ] Test mDNS resolution on different platforms
+
+**8.4 OTA (Over-The-Air) Updates:**
+- [ ] Integrate ArduinoOTA library
+- [ ] Password-protect OTA updates
+- [ ] Enable updates via `camera.local` or IP address
+- [ ] Add OTA status page to web UI (optional)
+
+**8.5 Status LED Indicators:**
+- [ ] Define LED patterns:
+  - WiFi connecting: slow blink (500ms on/off)
+  - WiFi connected: solid on
+  - AP mode: slow double-blink
+  - Streaming active: fast blink (100ms on/off)
+  - Error state: fast triple-blink
+  - Factory reset: 3 flashes
+- [ ] Implement non-blocking LED control task
+- [ ] Make LED pin configurable in settings
+
+**8.6 Additional Web UI Features:**
+- [ ] Add system restart endpoint: `POST /api/restart` (requires auth)
+- [ ] Add factory reset button in web UI (with confirmation dialog)
+- [ ] Add real-time FPS display on stream preview
+- [ ] Add connection quality indicator (frame delivery rate)
+- [ ] Add system info display (uptime, free memory, WiFi RSSI)
+- [ ] Improve error handling and user feedback
+
+**Hardware Requirements:**
+- Push button connected to GPIO 19 (with 10kΩ pull-up resistor, or use internal pull-up)
+- Status LED (optional, built-in LED usually available)
+
+**Libraries Needed:**
+- `DNSServer.h` - For captive portal DNS redirect
+- `ESPmDNS.h` - For hostname resolution
+- `ArduinoOTA.h` - For over-the-air updates
+
+**Files to Create:**
+- `wifi_provisioning.h` / `wifi_provisioning.cpp`
+- `setup_page.h` (embedded HTML for provisioning page)
+- `factory_reset.h` / `factory_reset.cpp`
+- `led_status.h` / `led_status.cpp`
+
+**Files to Modify:**
+- Main `.ino` file (boot mode detection, OTA setup)
+- `camera_settings.h` (add `isWiFiConfigured` flag)
+- `web_server.cpp` (add restart/reset endpoints)
+
+**Estimated time:** 14-18 hours
 
 ---
 
@@ -456,9 +711,10 @@ Default Network:
 | 5 | Camera Settings UI | 6-8 |
 | 6 | Dual-Core Architecture | 4-6 |
 | 7 | Python Client Examples | 2-3 |
-| 8 | Additional Features | 8-10 |
+| 7B | Professional Camera Viewer (PyQt6) | 12-16 |
+| 8 | Additional Features + WiFi Provisioning | 14-18 |
 | 9 | Testing & Docs | 8-12 |
-| **Total** | | **48-67 hours** |
+| **Total** | | **60-91 hours** |
 
 ---
 
