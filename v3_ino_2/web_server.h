@@ -14,6 +14,8 @@ public:
     void begin();
     void loop();
     void setReconnectCallback(std::function<void()> callback);
+    void setFrameCaptureCallback(std::function<size_t(uint8_t*, size_t)> callback);
+    void setFrameRateCallback(std::function<uint8_t()> callback);
 
 private:
     static const unsigned long COOKIE_TIMEOUT_MS = 1800000UL;
@@ -24,6 +26,8 @@ private:
     unsigned long lastActivityMs_;
     unsigned long reconnectAtMs_;
     std::function<void()> reconnectCallback_;
+    std::function<size_t(uint8_t*, size_t)> frameCaptureCallback_;
+    std::function<uint8_t()> frameRateCallback_;
 
     String generateToken();
     bool isAuthenticated(AsyncWebServerRequest* request);
@@ -36,6 +40,8 @@ private:
     void handleGetSettings(AsyncWebServerRequest* request);
     void handlePostSettings(AsyncWebServerRequest* request);
     void handleGetStatus(AsyncWebServerRequest* request);
+    void handleStream(AsyncWebServerRequest* request);
+    void handleCapture(AsyncWebServerRequest* request);
     bool parseIPAddress(const String& value, byte destination[4]);
 };
 

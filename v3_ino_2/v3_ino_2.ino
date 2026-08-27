@@ -17,7 +17,6 @@
 
 #include "esp_camera.h"
 #include <WiFi.h>
-#include <HTTPClient.h>
 #include "camera_settings.h"
 #include "web_server.h"
 
@@ -47,17 +46,20 @@
 #define LED_GPIO_NUM       48  // 板载 LED（根据模块调整）
 
 // ==================== 全局变量 ====================
-#define POST_TIMEOUT_MS    2000 // HTTP POST 超时
 
 static CameraSettings settings;
 static CameraWebServer webServer(80, &settings);
-static unsigned long lastFrameTime = 0;
 static framesize_t currentResolution = FRAMESIZE_SVGA;
 static int currentQuality = 12;
 
-static String streamUrl() {
-    return String("http://") + settings.pythonServerIP + ":" +
-           String(settings.pythonServerPort) + "/stream";
+static size_t captureJpeg(uint8_t* destination, size_t capacity) {
+    if (!destination || capacity == 0) return 0;
+    camera_fb_t* fb = esp_camera_fb_get();
+    if (!fb) return 0;
+    const size_t length = fb->len <= capacity ? fb->len : 0;
+    if (length > 0) memcpy(destination, fb->buf, length);
+    esp_camera_fb_return(fb);
+    return length;
 }
 
 // ==================== 摄像头初始化 ====================
@@ -238,29 +240,6 @@ void handleCommand(const String& resp) {
     }
 }
 
-// ==================== 发送帧到服务器 ====================
-void sendFrame(camera_fb_t *fb) {
-    HTTPClient http;
-    http.begin(streamUrl());
-    http.addHeader("Content-Type", "image/jpeg");
-    http.setTimeout(POST_TIMEOUT_MS);
-
-    int code = http.POST(fb->buf, fb->len);
-
-    if (code == 200) {
-        String resp = http.getString();
-        // 解析服务器返回的 JSON 命令
-        if (resp.indexOf("\"cmd\"") >= 0) {
-            handleCommand(resp);
-        }
-    } else if (code > 0) {
-        Serial0.printf("[HTTP] Code: %d\n", code);
-    } else {
-        Serial0.printf("[HTTP] Error: %s\n", http.errorToString(code).c_str());
-    }
-    http.end();
-}
-
 // ==================== setup ====================
 void setup() {
     Serial0.begin(115200);
@@ -325,6 +304,8 @@ void setup() {
     webServer.setReconnectCallback([]() {
         connectWiFi();
     });
+    webServer.setFrameCaptureCallback(captureJpeg);
+    webServer.setFrameRateCallback([]() { return settings.frameRate; });
     connectWiFi();
 
     // Starting while disconnected lets the server become reachable after a
@@ -339,34 +320,13 @@ void setup() {
 
 // ==================== loop ====================
 void loop() {
-    unsigned long now = millis();
     webServer.loop();
-
-    const unsigned long frameIntervalMs = 1000UL / settings.frameRate;
-    if (now - lastFrameTime < frameIntervalMs) {
-        delay(2);
-        return;
-    }
-    lastFrameTime = now;
 
     // WiFi 断线自动重连
     if (WiFi.status() != WL_CONNECTED) {
         Serial0.println("[WIFI] Disconnected, reconnecting...");
         connectWiFi();
-        return;
+    } else {
+        delay(10);
     }
-
-    // 采集一帧
-    camera_fb_t *fb = esp_camera_fb_get();
-    if (!fb) {
-        Serial0.println("[CAM] Capture failed!");
-        delay(100);
-        return;
-    }
-
-    // 推送到服务器
-    sendFrame(fb);
-
-    // 释放帧缓冲
-    esp_camera_fb_return(fb);
 }

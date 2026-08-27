@@ -103,21 +103,22 @@
 **Goal:** Implement proper MJPEG stream endpoint on ESP32
 
 **Tasks:**
-- [ ] Remove current HTTP POST per frame logic
-- [ ] Implement MJPEG streaming endpoint:
+- [x] Remove current HTTP POST per frame logic
+- [x] Implement MJPEG streaming endpoint:
   - `GET /stream` - multipart/x-mixed-replace stream
-- [ ] Implement frame boundary formatting:
+- [x] Implement frame boundary formatting:
   ```
   --frame\r\n
   Content-Type: image/jpeg\r\n\r\n
   [JPEG data]
   \r\n
   ```
-- [ ] Add frame rate control (5/10/15/20 fps)
-- [ ] Handle multiple simultaneous clients
-- [ ] Add client connection/disconnection tracking
-- [ ] Implement `GET /capture` for single snapshot
-- [ ] Test stream with browser and VLC
+- [x] Add frame rate control (5/10/15/20 fps)
+- [x] Handle multiple simultaneous clients
+- [x] Add client connection/disconnection tracking
+- [x] Implement `GET /capture` for single snapshot
+- [x] Test stream with browser and snapshot capture on ESP32-S3 hardware
+- [ ] Test stream with VLC
 
 **Files to modify:**
 - `web_server.cpp`

@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <cstdlib>
 #include "html_pages.h"
 
 CameraWebServer::CameraWebServer(uint16_t port, CameraSettings* settings)
@@ -35,6 +36,12 @@ void CameraWebServer::begin() {
     server_.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
         handleGetStatus(request);
     });
+    server_.on("/stream", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        handleStream(request);
+    });
+    server_.on("/capture", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        handleCapture(request);
+    });
     server_.onNotFound([](AsyncWebServerRequest* request) {
         request->send(404, "text/plain", "404 Not Found");
     });
@@ -62,6 +69,14 @@ void CameraWebServer::loop() {
 
 void CameraWebServer::setReconnectCallback(std::function<void()> callback) {
     reconnectCallback_ = callback;
+}
+
+void CameraWebServer::setFrameCaptureCallback(std::function<size_t(uint8_t*, size_t)> callback) {
+    frameCaptureCallback_ = callback;
+}
+
+void CameraWebServer::setFrameRateCallback(std::function<uint8_t()> callback) {
+    frameRateCallback_ = callback;
 }
 
 String CameraWebServer::generateToken() {
@@ -306,4 +321,103 @@ void CameraWebServer::handleGetStatus(AsyncWebServerRequest* request) {
     String body;
     serializeJson(document, body);
     request->send(200, "application/json", body);
+}
+
+void CameraWebServer::handleCapture(AsyncWebServerRequest* request) {
+    if (!isAuthenticated(request)) {
+        sendUnauthorized(request);
+        return;
+    }
+    if (!frameCaptureCallback_) {
+        sendJson(request, 503, "Camera capture is unavailable");
+        return;
+    }
+
+    // UXGA JPEGs can be larger than the default async response buffer. Copy
+    // into PSRAM/heap memory so the camera frame can be returned immediately.
+    const size_t capacity = 512 * 1024;
+    uint8_t* frame = static_cast<uint8_t*>(malloc(capacity));
+    if (!frame) {
+        sendJson(request, 503, "Insufficient memory for capture");
+        return;
+    }
+    const size_t length = frameCaptureCallback_(frame, capacity);
+    if (length == 0 || length > capacity) {
+        free(frame);
+        sendJson(request, 503, "Camera capture failed");
+        return;
+    }
+    AsyncWebServerResponse* response = request->beginResponse_P(200, "image/jpeg", frame, length);
+    response->addHeader("Cache-Control", "no-store");
+    response->addHeader("Content-Disposition", "inline; filename=capture.jpg");
+    response->addHeader("Connection", "close");
+    request->onDisconnect([frame]() { free(frame); });
+    request->send(response);
+}
+
+void CameraWebServer::handleStream(AsyncWebServerRequest* request) {
+    if (!isAuthenticated(request)) {
+        sendUnauthorized(request);
+        return;
+    }
+    if (!frameCaptureCallback_) {
+        sendJson(request, 503, "Camera capture is unavailable");
+        return;
+    }
+
+    struct StreamState {
+        uint8_t* frame = nullptr;
+        size_t frameLength = 0;
+        size_t frameOffset = 0;
+        String prefix;
+        size_t prefixOffset = 0;
+        const char* suffix = "\r\n";
+        size_t suffixOffset = 2;
+        unsigned long nextFrameAt = 0;
+    };
+    StreamState* state = new StreamState();
+    const std::function<size_t(uint8_t*, size_t)> capture = frameCaptureCallback_;
+    const std::function<uint8_t()> fps = frameRateCallback_;
+
+    AsyncWebServerResponse* response = request->beginChunkedResponse(
+        "multipart/x-mixed-replace; boundary=frame",
+        [state, capture, fps](uint8_t* buffer, size_t maxLen, size_t index) -> size_t {
+            if (index == 0 && state->nextFrameAt == 0) state->nextFrameAt = millis();
+            if (state->prefixOffset == state->prefix.length() &&
+                state->frameOffset == state->frameLength &&
+                state->suffixOffset == strlen(state->suffix)) {
+                const uint8_t requestedFps = fps ? fps() : 10;
+                const unsigned long interval = 1000UL / (requestedFps == 0 ? 10 : requestedFps);
+                if (static_cast<long>(millis() - state->nextFrameAt) < 0)
+                    delay(static_cast<unsigned long>(state->nextFrameAt - millis()));
+                free(state->frame);
+                state->frame = static_cast<uint8_t*>(malloc(512 * 1024));
+                if (!state->frame) return 0;
+                state->frameLength = capture(state->frame, 512 * 1024);
+                if (state->frameLength == 0 || state->frameLength > 512 * 1024) return 0;
+                state->frameOffset = 0;
+                state->prefix = String("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ") +
+                                 String(state->frameLength) + "\r\n\r\n";
+                state->prefixOffset = 0;
+                state->suffixOffset = 0;
+                state->nextFrameAt = millis() + interval;
+            }
+
+            size_t written = 0;
+            while (written < maxLen && state->prefixOffset < state->prefix.length())
+                buffer[written++] = state->prefix[state->prefixOffset++];
+            while (written < maxLen && state->frameOffset < state->frameLength)
+                buffer[written++] = state->frame[state->frameOffset++];
+            while (written < maxLen && state->suffixOffset < strlen(state->suffix))
+                buffer[written++] = state->suffix[state->suffixOffset++];
+            return written;
+        });
+    response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    response->addHeader("Pragma", "no-cache");
+    response->addHeader("Connection", "keep-alive");
+    request->onDisconnect([state]() {
+        free(state->frame);
+        delete state;
+    });
+    request->send(response);
 }
