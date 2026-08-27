@@ -1,0 +1,45 @@
+# Generated Python files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Captured media and recordings
+photos/
+photos2/
+videos/
+videos2/
+*.jpg
+*.jpeg
+*.png
+*.avi
+*.mp4
+*.mov
+
+# Local backups and scratch copies
+*_bk.py
+*_bk*.py
+*_BK*.py
+*_backup.py
+backup/
+backups/
+
+# Local configuration and secrets
+.env
+.env.*
+*.local
+
+# macOS and editor files
+.DS_Store
+.idea/
+
+# Arduino build output
+build/
+build-*/
+*.hex
+*.bin
+*.elf
+*.map
+
+# Temporary test artifacts
+*.log
+.tmp/
