@@ -1,10 +1,11 @@
 #include "web_server.h"
 
 #include <ArduinoJson.h>
+#include <WiFi.h>
 #include "html_pages.h"
 
 CameraWebServer::CameraWebServer(uint16_t port, CameraSettings* settings)
-    : server_(port), settings_(settings), lastActivityMs_(0) {
+    : server_(port), settings_(settings), lastActivityMs_(0), reconnectAtMs_(0) {
     randomSeed(static_cast<unsigned long>(micros()));
 }
 
@@ -25,6 +26,15 @@ void CameraWebServer::begin() {
     server_.on("/api/change-password", HTTP_POST, [this](AsyncWebServerRequest* request) {
         handleChangePassword(request);
     });
+    server_.on("/api/settings", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        handleGetSettings(request);
+    });
+    server_.on("/api/settings", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        handlePostSettings(request);
+    });
+    server_.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        handleGetStatus(request);
+    });
     server_.onNotFound([](AsyncWebServerRequest* request) {
         request->send(404, "text/plain", "404 Not Found");
     });
@@ -39,6 +49,19 @@ void CameraWebServer::loop() {
         lastActivityMs_ = 0;
         Serial.println("[WEB] Session expired");
     }
+
+    if (reconnectAtMs_ != 0 &&
+        static_cast<long>(millis() - reconnectAtMs_) >= 0) {
+        reconnectAtMs_ = 0;
+        if (reconnectCallback_) {
+            Serial.println("[WEB] Applying updated network settings");
+            reconnectCallback_();
+        }
+    }
+}
+
+void CameraWebServer::setReconnectCallback(std::function<void()> callback) {
+    reconnectCallback_ = callback;
 }
 
 String CameraWebServer::generateToken() {
@@ -155,4 +178,132 @@ void CameraWebServer::handleChangePassword(AsyncWebServerRequest* request) {
     }
     sendJson(request, 200, "Password changed successfully");
     Serial.println("[WEB] Password changed");
+}
+
+bool CameraWebServer::parseIPAddress(const String& value, byte destination[4]) {
+    IPAddress address;
+    if (!destination || !address.fromString(value)) return false;
+    for (uint8_t i = 0; i < 4; ++i) destination[i] = address[i];
+    return true;
+}
+
+void CameraWebServer::handleGetSettings(AsyncWebServerRequest* request) {
+    if (!isAuthenticated(request)) {
+        sendUnauthorized(request);
+        return;
+    }
+
+    StaticJsonDocument<512> document;
+    document["wifi_ssid"] = settings_->wifiSSID;
+    document["wifi_password_set"] = settings_->wifiPassword[0] != '\0';
+    document["use_dhcp"] = settings_->useDHCP;
+    document["static_ip"] = IPAddress(settings_->staticIP).toString();
+    document["gateway"] = IPAddress(settings_->gateway).toString();
+    document["subnet"] = IPAddress(settings_->subnet).toString();
+    document["device_name"] = settings_->deviceName;
+
+    String body;
+    serializeJson(document, body);
+    request->send(200, "application/json", body);
+}
+
+void CameraWebServer::handlePostSettings(AsyncWebServerRequest* request) {
+    if (!isAuthenticated(request)) {
+        sendUnauthorized(request);
+        return;
+    }
+    if (!request->hasArg("wifi_ssid") || !request->hasArg("use_dhcp")) {
+        sendJson(request, 400, "Missing WiFi SSID or DHCP setting");
+        return;
+    }
+
+    const String ssid = request->arg("wifi_ssid");
+    const String password = request->hasArg("wifi_password")
+                                ? request->arg("wifi_password")
+                                : String();
+    const bool clearPassword = request->hasArg("clear_wifi_password") &&
+                               request->arg("clear_wifi_password") == "true";
+    const String dhcpValue = request->arg("use_dhcp");
+    if (ssid.length() == 0 || ssid.length() > 31) {
+        sendJson(request, 400, "WiFi SSID must be 1-31 characters");
+        return;
+    }
+    if (password.length() > 31) {
+        sendJson(request, 400, "WiFi password must be at most 31 characters");
+        return;
+    }
+    if (dhcpValue != "true" && dhcpValue != "false") {
+        sendJson(request, 400, "Invalid DHCP setting");
+        return;
+    }
+
+    const bool useDHCP = dhcpValue == "true";
+    byte staticIP[4];
+    byte gateway[4];
+    byte subnet[4];
+    memcpy(staticIP, settings_->staticIP, sizeof(staticIP));
+    memcpy(gateway, settings_->gateway, sizeof(gateway));
+    memcpy(subnet, settings_->subnet, sizeof(subnet));
+    const bool hasStaticFields = request->hasArg("static_ip") &&
+                                 request->hasArg("gateway") &&
+                                 request->hasArg("subnet");
+    if ((!useDHCP && !hasStaticFields) ||
+        (hasStaticFields &&
+         (!parseIPAddress(request->arg("static_ip"), staticIP) ||
+          !parseIPAddress(request->arg("gateway"), gateway) ||
+          !parseIPAddress(request->arg("subnet"), subnet)))) {
+        sendJson(request, 400, "Static IP, gateway, and subnet must be valid IPv4 addresses");
+        return;
+    }
+
+    const String effectivePassword = clearPassword
+                                         ? String()
+                                         : (password.length() > 0
+                                                ? password
+                                                : String(settings_->wifiPassword));
+    const String oldSSID(settings_->wifiSSID);
+    const String oldPassword(settings_->wifiPassword);
+    if (!settings_->writeWiFiSettings(ssid.c_str(), ssid.length(),
+                                      effectivePassword.c_str(), effectivePassword.length())) {
+        sendJson(request, 500, "Failed to save WiFi settings");
+        return;
+    }
+    if (!settings_->writeNetworkSettings(useDHCP, staticIP, gateway, subnet)) {
+        settings_->writeWiFiSettings(oldSSID.c_str(), oldSSID.length(),
+                                     oldPassword.c_str(), oldPassword.length());
+        sendJson(request, 500, "Failed to save network settings");
+        return;
+    }
+
+    StaticJsonDocument<256> document;
+    document["status"] = "success";
+    document["message"] = "Settings saved; reconnecting WiFi";
+    document["reconnecting"] = reconnectCallback_ != nullptr;
+    document["expected_ip"] = useDHCP ? "DHCP assigned" : IPAddress(staticIP).toString();
+    String body;
+    serializeJson(document, body);
+    request->send(200, "application/json", body);
+
+    if (reconnectCallback_) reconnectAtMs_ = millis() + 1500UL;
+    Serial.printf("[WEB] Network settings saved (SSID: %s, DHCP: %s)\n",
+                  ssid.c_str(), useDHCP ? "yes" : "no");
+}
+
+void CameraWebServer::handleGetStatus(AsyncWebServerRequest* request) {
+    if (!isAuthenticated(request)) {
+        sendUnauthorized(request);
+        return;
+    }
+
+    const bool connected = WiFi.status() == WL_CONNECTED;
+    StaticJsonDocument<384> document;
+    document["uptime_seconds"] = millis() / 1000UL;
+    document["wifi_connected"] = connected;
+    document["ip_address"] = connected ? WiFi.localIP().toString() : "";
+    document["wifi_ssid"] = connected ? WiFi.SSID() : settings_->wifiSSID;
+    document["rssi"] = connected ? WiFi.RSSI() : 0;
+    document["device_name"] = settings_->deviceName;
+    String body;
+    serializeJson(document, body);
+    request->send(200, "application/json", body);
 }

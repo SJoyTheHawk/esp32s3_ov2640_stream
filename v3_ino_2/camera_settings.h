@@ -18,10 +18,8 @@ public:
         static constexpr byte GATEWAY[4] = {192, 168, 2, 1};
         static constexpr byte SUBNET[4] = {255, 255, 255, 0};
 
-        // static constexpr char WIFI_SSID[32] = "XIMS2";
-        // static constexpr char WIFI_PASSWORD[32] = "Ns203Ns203.";
-        static constexpr char WIFI_SSID[32] = "VPlace7B-4";
-        static constexpr char WIFI_PASSWORD[32] = "60727269";
+        static constexpr char WIFI_SSID[32] = "";
+        static constexpr char WIFI_PASSWORD[32] = "";
 
         // OV2640 frame-size values: QVGA=8, VGA=9, SVGA=10, XGA=11, UXGA=12.
         static constexpr uint8_t CAMERA_RESOLUTION = 10;

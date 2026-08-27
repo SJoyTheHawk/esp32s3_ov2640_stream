@@ -12,6 +12,8 @@ an OV2640 sensor.
 - Preferences (NVS) backed camera, network, authentication, and server settings
 - Embedded web login with cookie sessions
 - Password change persisted to NVS
+- Authenticated network settings and device status APIs
+- Web-based DHCP/static-IP and WiFi configuration with automatic reconnect
 - Temporary NVS persistence test mode
 
 ## Project Layout
@@ -25,6 +27,7 @@ v3_ino_2/
 server.py               Optional Flask receiver, recorder, and control UI
 IMPLEMENTATION_PLAN.md  Phased implementation plan
 PHASE2_BENCHMARK.md     Web authentication test procedure
+PHASE3_BENCHMARK.md     Network settings and status test procedure
 ```
 
 Captured photos, recordings, backup copies, Python caches, and local build
@@ -52,8 +55,8 @@ The ESP32 board package supplies `WiFi`, `Preferences`, and `esp_camera`.
 
 1. Open `v3_ino_2/v3_ino_2.ino` in Arduino IDE.
 2. Select the ESP32-S3 board and the correct USB port.
-3. Configure local WiFi and Python server values in `camera_settings.h` before
-   flashing, or use the settings API when Phase 3 is implemented.
+3. Configure initial WiFi values in `camera_settings.h` before the first flash.
+   After login, further WiFi and IP changes can be made from the web UI.
 4. Flash the sketch and open Serial Monitor at `115200`.
 5. Confirm the log reports WiFi connection and `[WEB] Server started on port 80`.
 
@@ -84,8 +87,9 @@ available at `http://<server-ip>:8000/`.
 
 - Phase 1 NVS persistence: use the guarded `NVS_TEST_WRITE` block in the sketch.
 - Phase 2 authentication: follow [PHASE2_BENCHMARK.md](PHASE2_BENCHMARK.md).
-- Later phases cover the settings API, native MJPEG streaming, camera UI, and
-  dual-core architecture.
+- Phase 3 network settings: follow [PHASE3_BENCHMARK.md](PHASE3_BENCHMARK.md).
+- Later phases cover native MJPEG streaming, camera UI, and dual-core
+  architecture.
 
 ## License
 

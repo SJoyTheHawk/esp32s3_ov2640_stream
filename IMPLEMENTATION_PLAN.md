@@ -79,17 +79,17 @@
 **Goal:** Implement web UI for network and system settings
 
 **Tasks:**
-- [ ] Implement settings endpoints:
+- [x] Implement settings endpoints:
   - `GET /api/settings` - return current configuration as JSON
   - `POST /api/settings` - update and persist settings
   - `GET /api/status` - uptime, IP, connection status
-- [ ] Add network configuration form to web UI:
+- [x] Add network configuration form to web UI:
   - WiFi SSID / password
   - DHCP vs Manual IP selection
   - Static IP / Gateway / Subnet inputs
-- [ ] Add WiFi reconnection logic on settings change
-- [ ] Add IP address change handling (warn user about connection loss)
-- [ ] Test all settings changes and persistence
+- [x] Add WiFi reconnection logic on settings change
+- [x] Add IP address change handling (warn user about connection loss)
+- [x] Test all settings changes and persistence (verified on ESP32-S3 hardware)
 
 **Files to modify:**
 - `web_server.cpp` (add endpoints)

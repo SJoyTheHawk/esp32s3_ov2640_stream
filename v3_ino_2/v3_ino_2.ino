@@ -161,7 +161,12 @@ void connectWiFi() {
     }
 
     Serial0.printf("[WIFI] Connecting to %s", settings.wifiSSID);
-    if (!settings.useDHCP) {
+    WiFi.disconnect(true);
+    delay(100);
+    WiFi.mode(WIFI_STA);
+    if (settings.useDHCP) {
+        WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    } else {
         IPAddress ip(settings.staticIP[0], settings.staticIP[1], settings.staticIP[2], settings.staticIP[3]);
         IPAddress gateway(settings.gateway[0], settings.gateway[1], settings.gateway[2], settings.gateway[3]);
         IPAddress subnet(settings.subnet[0], settings.subnet[1], settings.subnet[2], settings.subnet[3]);
@@ -317,13 +322,14 @@ void setup() {
         while (true) delay(1000);
     }
 
+    webServer.setReconnectCallback([]() {
+        connectWiFi();
+    });
     connectWiFi();
 
-    if (WiFi.status() == WL_CONNECTED) {
-        webServer.begin();
-    } else {
-        Serial0.println("[WEB] Server not started because WiFi is disconnected");
-    }
+    // Starting while disconnected lets the server become reachable after a
+    // later automatic reconnect without requiring a reboot.
+    webServer.begin();
 
     // 启动时闪烁 LED 表示就绪
     flashLED(1, 200);
