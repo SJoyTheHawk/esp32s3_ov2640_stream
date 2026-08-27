@@ -19,6 +19,10 @@
 #include <WiFi.h>
 #include "camera_settings.h"
 #include "web_server.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
+#include <cstdlib>
 
 // Set to 1 temporarily to run the Phase 1 persistence test. Set back to 0
 // before normal camera operation. Reflashing does not erase NVS contents.
@@ -51,21 +55,28 @@ static CameraSettings settings;
 static CameraWebServer webServer(80, &settings);
 static framesize_t currentResolution = FRAMESIZE_SVGA;
 static int currentQuality = 12;
+static SemaphoreHandle_t cameraMutex;
+static SemaphoreHandle_t frameMutex;
+static uint8_t* latestFrame;
+static size_t latestFrameLength;
+static const size_t FRAME_BUFFER_CAPACITY = 512 * 1024;
+static TaskHandle_t cameraTaskHandle;
+static TaskHandle_t networkTaskHandle;
 bool reinitCamera(framesize_t resolution, int quality);
 
 static size_t captureJpeg(uint8_t* destination, size_t capacity) {
     if (!destination || capacity == 0) return 0;
-    camera_fb_t* fb = esp_camera_fb_get();
-    if (!fb) return 0;
-    const size_t length = fb->len <= capacity ? fb->len : 0;
-    if (length > 0) memcpy(destination, fb->buf, length);
-    esp_camera_fb_return(fb);
+    if (xSemaphoreTake(frameMutex, pdMS_TO_TICKS(1000)) != pdTRUE) return 0;
+    const size_t length = latestFrameLength <= capacity ? latestFrameLength : 0;
+    if (length > 0) memcpy(destination, latestFrame, length);
+    xSemaphoreGive(frameMutex);
     return length;
 }
 
 static bool applyCameraConfig(uint8_t resolution, uint8_t quality, int8_t brightness,
                               int8_t contrast, int8_t saturation, bool verticalFlip,
                               bool horizontalMirror) {
+    if (xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(3000)) != pdTRUE) return false;
     const bool needsReinit = currentResolution != static_cast<framesize_t>(resolution) ||
                              currentQuality != quality;
     settings.brightness = brightness;
@@ -73,15 +84,52 @@ static bool applyCameraConfig(uint8_t resolution, uint8_t quality, int8_t bright
     settings.saturation = saturation;
     settings.verticalFlip = verticalFlip;
     settings.horizontalMirror = horizontalMirror;
-    if (needsReinit && !reinitCamera(static_cast<framesize_t>(resolution), quality)) return false;
+    if (needsReinit && !reinitCamera(static_cast<framesize_t>(resolution), quality)) {
+        xSemaphoreGive(cameraMutex);
+        return false;
+    }
     sensor_t* sensor = esp_camera_sensor_get();
-    if (!sensor) return false;
+    if (!sensor) {
+        xSemaphoreGive(cameraMutex);
+        return false;
+    }
     sensor->set_vflip(sensor, verticalFlip ? 1 : 0);
     sensor->set_hmirror(sensor, horizontalMirror ? 1 : 0);
     sensor->set_brightness(sensor, brightness);
     sensor->set_contrast(sensor, contrast);
     sensor->set_saturation(sensor, saturation);
+    xSemaphoreGive(cameraMutex);
     return true;
+}
+
+static void cameraTask(void*) {
+    for (;;) {
+        const uint8_t fps = settings.frameRate == 0 ? 10 : settings.frameRate;
+        if (xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+            camera_fb_t* fb = esp_camera_fb_get();
+            if (fb) {
+                if (xSemaphoreTake(frameMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                    const size_t length = fb->len <= FRAME_BUFFER_CAPACITY ? fb->len : 0;
+                    if (length > 0) {
+                        memcpy(latestFrame, fb->buf, length);
+                        latestFrameLength = length;
+                    }
+                    xSemaphoreGive(frameMutex);
+                }
+                esp_camera_fb_return(fb);
+            }
+            xSemaphoreGive(cameraMutex);
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000UL / fps));
+    }
+}
+
+static void networkTask(void*) {
+    for (;;) {
+        webServer.loop();
+        if (WiFi.status() != WL_CONNECTED) connectWiFi();
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }
 
 // ==================== 摄像头初始化 ====================
@@ -323,6 +371,14 @@ void setup() {
         while (true) delay(1000);
     }
 
+    cameraMutex = xSemaphoreCreateMutex();
+    frameMutex = xSemaphoreCreateMutex();
+    latestFrame = static_cast<uint8_t*>(ps_malloc(FRAME_BUFFER_CAPACITY));
+    if (!cameraMutex || !frameMutex || !latestFrame) {
+        Serial0.println("[SYS] Failed to allocate camera task resources");
+        while (true) delay(1000);
+    }
+
     webServer.setReconnectCallback([]() {
         connectWiFi();
     });
@@ -334,6 +390,10 @@ void setup() {
     // Starting while disconnected lets the server become reachable after a
     // later automatic reconnect without requiring a reboot.
     webServer.begin();
+    xTaskCreatePinnedToCore(cameraTask, "CameraCapture", 8192, nullptr, 2,
+                            &cameraTaskHandle, 0);
+    xTaskCreatePinnedToCore(networkTask, "NetworkService", 8192, nullptr, 1,
+                            &networkTaskHandle, 1);
 
     // 启动时闪烁 LED 表示就绪
     flashLED(1, 200);
@@ -343,13 +403,5 @@ void setup() {
 
 // ==================== loop ====================
 void loop() {
-    webServer.loop();
-
-    // WiFi 断线自动重连
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial0.println("[WIFI] Disconnected, reconnecting...");
-        connectWiFi();
-    } else {
-        delay(10);
-    }
+    vTaskDelay(pdMS_TO_TICKS(1000));
 }

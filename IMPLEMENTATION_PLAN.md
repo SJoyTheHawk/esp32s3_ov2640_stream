@@ -161,22 +161,22 @@
 **Goal:** Split workload across ESP32-S3 cores for better performance
 
 **Tasks:**
-- [ ] Create FreeRTOS tasks structure:
+- [x] Create FreeRTOS tasks structure:
   - **Core 0:** Camera capture and streaming (high priority)
   - **Core 1:** Web server and settings management (lower priority)
-- [ ] Implement thread-safe frame sharing:
+- [x] Implement thread-safe frame sharing:
   - Create mutex for shared frame buffer
   - Core 0 captures and updates latest frame
   - Core 1 reads frame for client streaming
-- [ ] Implement task functions:
+- [x] Implement task functions:
   ```cpp
   void cameraTask(void *parameter);  // Core 0
   void networkTask(void *parameter); // Core 1
   ```
-- [ ] Move camera loop to `cameraTask` on Core 0
-- [ ] Move web server loop to `networkTask` on Core 1
-- [ ] Empty main `loop()` function (all work in tasks)
-- [ ] Test stability under load (multiple clients, settings changes)
+- [x] Move camera loop to `cameraTask` on Core 0
+- [x] Move web server loop to `networkTask` on Core 1
+- [x] Empty main `loop()` function (all work in tasks)
+- [x] Test stability under load (multiple clients, settings changes; verified on ESP32-S3 hardware)
 - [ ] Monitor task stack usage and adjust if needed
 
 **Files to modify:**

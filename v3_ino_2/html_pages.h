@@ -56,7 +56,7 @@ section{padding:24px 0;border-bottom:1px solid #34393e}.status{display:grid;grid
 <section><h2>Camera</h2><img class="preview" src="/stream" alt="Live camera preview"><form id="camera-form"><div class="grid">
 <div><label for="resolution">Resolution</label><select id="resolution" name="resolution"><option value="8">QVGA (320x240)</option><option value="9">VGA (640x480)</option><option value="10">SVGA (800x600)</option><option value="11">XGA (1024x768)</option><option value="12">UXGA (1600x1200)</option></select></div>
 <div><label for="frame-rate">Frame rate</label><select id="frame-rate" name="frame_rate"><option>5</option><option>10</option><option>15</option><option>20</option></select></div>
-<label>JPEG quality<div class="range"><input id="quality" name="quality" type="range" min="10" max="63"><output id="quality-value"></output></div></label>
+<label>JPEG quality <span class="muted">Lower is better (10 = best, 63 = most compressed)</span><div class="range"><input id="quality" name="quality" type="range" min="10" max="63"><output id="quality-value"></output></div></label>
 <label>Brightness<div class="range"><input id="brightness" name="brightness" type="range" min="-2" max="2" step="1"><output id="brightness-value"></output></div></label>
 <label>Contrast<div class="range"><input id="contrast" name="contrast" type="range" min="-2" max="2" step="1"><output id="contrast-value"></output></div></label>
 <label>Saturation<div class="range"><input id="saturation" name="saturation" type="range" min="-2" max="2" step="1"><output id="saturation-value"></output></div></label>
