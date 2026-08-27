@@ -19,6 +19,7 @@
 #include <WiFi.h>
 #include "camera_settings.h"
 #include "web_server.h"
+#include "factory_reset.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -49,6 +50,7 @@
 
 // ==================== LED 反馈引脚 ====================
 #define LED_GPIO_NUM       48  // 板载 LED（根据模块调整）
+#define FACTORY_RESET_GPIO_NUM 19
 
 // ==================== 全局变量 ====================
 
@@ -63,10 +65,11 @@ static size_t latestFrameLength;
 static const size_t FRAME_BUFFER_CAPACITY = 512 * 1024;
 static TaskHandle_t cameraTaskHandle;
 static TaskHandle_t networkTaskHandle;
+static FactoryReset factoryReset(&settings, FACTORY_RESET_GPIO_NUM, LED_GPIO_NUM);
 bool reinitCamera(framesize_t resolution, int quality);
 
 static size_t captureJpeg(uint8_t* destination, size_t capacity) {
-    if (!destination || capacity == 0) return 0;
+    if (!destination || capacity == 0 || !frameMutex || !latestFrame) return 0;
     if (xSemaphoreTake(frameMutex, pdMS_TO_TICKS(1000)) != pdTRUE) return 0;
     const size_t length = latestFrameLength <= capacity ? latestFrameLength : 0;
     if (length > 0) memcpy(destination, latestFrame, length);
@@ -77,6 +80,7 @@ static size_t captureJpeg(uint8_t* destination, size_t capacity) {
 static bool applyCameraConfig(uint8_t resolution, uint8_t quality, int8_t brightness,
                               int8_t contrast, int8_t saturation, bool verticalFlip,
                               bool horizontalMirror) {
+    if (!cameraMutex) return false;
     if (xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(3000)) != pdTRUE) return false;
     const bool needsReinit = currentResolution != static_cast<framesize_t>(resolution) ||
                              currentQuality != quality;
@@ -106,6 +110,10 @@ static bool applyCameraConfig(uint8_t resolution, uint8_t quality, int8_t bright
 static void cameraTask(void*) {
     for (;;) {
         const uint8_t fps = settings.frameRate == 0 ? 10 : settings.frameRate;
+        if (!cameraMutex || !frameMutex || !latestFrame) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
         if (xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
             camera_fb_t* fb = esp_camera_fb_get();
             if (fb) {
@@ -129,7 +137,7 @@ static void networkTask(void*) {
     unsigned long lastWifiAttempt = 0;
     for (;;) {
         webServer.loop();
-        if (WiFi.status() != WL_CONNECTED &&
+        if (settings.wifiSSID[0] != '\0' && WiFi.status() != WL_CONNECTED &&
             static_cast<unsigned long>(millis() - lastWifiAttempt) >= 10000UL) {
             lastWifiAttempt = millis();
             connectWiFi();
@@ -337,6 +345,7 @@ void setup() {
     }
     settings.readFromNVS();
     settings.printSettings();
+    factoryReset.begin();
 
 #if NVS_TEST_WRITE
     Serial0.println("[NVS TEST] Writing test values...");
@@ -416,5 +425,6 @@ void setup() {
 
 // ==================== loop ====================
 void loop() {
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    factoryReset.loop();
+    vTaskDelay(pdMS_TO_TICKS(10));
 }

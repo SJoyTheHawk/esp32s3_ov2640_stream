@@ -14,6 +14,7 @@ public:
         static constexpr char PASSWORD[32] = "admin";
         static constexpr char USER_USERNAME[32] = "user";
         static constexpr char USER_PASSWORD[32] = "user";
+        static constexpr bool IS_WIFI_CONFIGURED = false;
 
         static constexpr bool USE_DHCP = true;
         static constexpr byte STATIC_IP[4] = {192, 168, 2, 100};
@@ -22,8 +23,8 @@ public:
 
         // static constexpr char WIFI_SSID[32] = "";
         // static constexpr char WIFI_PASSWORD[32] = "";
-        static constexpr char WIFI_SSID[32] = "";
-        static constexpr char WIFI_PASSWORD[32] = "";
+        static constexpr char WIFI_SSID[32] = "South Park";
+        static constexpr char WIFI_PASSWORD[32] = "qwerasdf";
 
         // OV2640 frame-size values: QVGA=8, VGA=9, SVGA=10, XGA=11, UXGA=12.
         static constexpr uint8_t CAMERA_RESOLUTION = 10;
@@ -47,6 +48,7 @@ public:
     char password[32];
     char userUsername[32];
     char userPassword[32];
+    bool isWiFiConfigured;
 
     bool useDHCP;
     byte staticIP[4];
@@ -85,6 +87,8 @@ public:
     bool writeAdminPassword(const char* pass, size_t length);
     bool writeUserUsername(const char* user, size_t length);
     bool writeUserPassword(const char* pass, size_t length);
+    bool checkWiFiConfigured();
+    bool setWiFiConfigured(bool configured);
 
     bool writeNetworkSettings(bool dhcp, const byte ip[4], const byte gw[4], const byte sn[4]);
     bool writeDHCPSetting(bool dhcp);

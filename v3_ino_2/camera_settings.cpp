@@ -32,6 +32,7 @@ void CameraSettings::setDefaults() {
     strncpy(userPassword, DefaultValues::USER_PASSWORD, sizeof(userPassword));
     userUsername[sizeof(userUsername) - 1] = '\0';
     userPassword[sizeof(userPassword) - 1] = '\0';
+    isWiFiConfigured = DefaultValues::IS_WIFI_CONFIGURED;
 
     useDHCP = DefaultValues::USE_DHCP;
     memcpy(staticIP, DefaultValues::STATIC_IP, sizeof(staticIP));
@@ -83,6 +84,7 @@ bool CameraSettings::initializeNVS() {
     prefs.putString("password", DefaultValues::PASSWORD);
     prefs.putString("userUsername", DefaultValues::USER_USERNAME);
     prefs.putString("userPassword", DefaultValues::USER_PASSWORD);
+    prefs.putBool("wifiConfigured", DefaultValues::IS_WIFI_CONFIGURED);
     ok &= prefs.putBool("useDHCP", DefaultValues::USE_DHCP);
     ok &= prefs.putBytes("staticIP", DefaultValues::STATIC_IP, sizeof(staticIP)) == sizeof(staticIP);
     ok &= prefs.putBytes("gateway", DefaultValues::GATEWAY, sizeof(gateway)) == sizeof(gateway);
@@ -104,6 +106,7 @@ bool CameraSettings::initializeNVS() {
     prefs.putString("mdnsHost", DefaultValues::MDNS_HOSTNAME);
     ok &= prefs.isKey("username") && prefs.isKey("password") &&
           prefs.isKey("userUsername") && prefs.isKey("userPassword") &&
+          prefs.isKey("wifiConfigured") &&
           prefs.isKey("wifiSSID") && prefs.isKey("wifiPass") &&
           prefs.isKey("pyIP") && prefs.isKey("deviceName") && prefs.isKey("mdnsHost");
     if (ok) {
@@ -144,6 +147,7 @@ void CameraSettings::readFromNVS() {
     value.toCharArray(userUsername, sizeof(userUsername));
     value = prefs.getString("userPassword", DefaultValues::USER_PASSWORD);
     value.toCharArray(userPassword, sizeof(userPassword));
+    isWiFiConfigured = prefs.getBool("wifiConfigured", DefaultValues::IS_WIFI_CONFIGURED);
 
     useDHCP = prefs.getBool("useDHCP", DefaultValues::USE_DHCP);
     if (prefs.getBytesLength("staticIP") == sizeof(staticIP)) {
@@ -236,6 +240,21 @@ bool CameraSettings::writeUserUsername(const char* user, size_t length) {
 
 bool CameraSettings::writeUserPassword(const char* pass, size_t length) {
     return writeStringSetting("userPassword", pass, length, userPassword, sizeof(userPassword));
+}
+
+bool CameraSettings::checkWiFiConfigured() {
+    if (!prefs.begin(NVS_NAMESPACE, true)) return false;
+    const bool configured = prefs.getBool("wifiConfigured", DefaultValues::IS_WIFI_CONFIGURED);
+    prefs.end();
+    return configured;
+}
+
+bool CameraSettings::setWiFiConfigured(bool configured) {
+    if (!prefs.begin(NVS_NAMESPACE, false)) return false;
+    const bool ok = prefs.putBool("wifiConfigured", configured);
+    prefs.end();
+    if (ok) isWiFiConfigured = configured;
+    return ok;
 }
 
 bool CameraSettings::writeNetworkSettings(bool dhcp, const byte ip[4], const byte gw[4], const byte sn[4]) {
