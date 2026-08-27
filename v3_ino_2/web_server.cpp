@@ -36,6 +36,9 @@ void CameraWebServer::begin() {
     server_.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
         handleGetStatus(request);
     });
+    server_.on("/api/camera/config", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        handleCameraConfig(request);
+    });
     server_.on("/stream", HTTP_GET, [this](AsyncWebServerRequest* request) {
         handleStream(request);
     });
@@ -77,6 +80,10 @@ void CameraWebServer::setFrameCaptureCallback(std::function<size_t(uint8_t*, siz
 
 void CameraWebServer::setFrameRateCallback(std::function<uint8_t()> callback) {
     frameRateCallback_ = callback;
+}
+
+void CameraWebServer::setCameraConfigCallback(std::function<bool(uint8_t, uint8_t, int8_t, int8_t, int8_t, bool, bool)> callback) {
+    cameraConfigCallback_ = callback;
 }
 
 String CameraWebServer::generateToken() {
@@ -216,6 +223,14 @@ void CameraWebServer::handleGetSettings(AsyncWebServerRequest* request) {
     document["gateway"] = IPAddress(settings_->gateway).toString();
     document["subnet"] = IPAddress(settings_->subnet).toString();
     document["device_name"] = settings_->deviceName;
+    document["camera_resolution"] = settings_->cameraResolution;
+    document["camera_quality"] = settings_->cameraQuality;
+    document["frame_rate"] = settings_->frameRate;
+    document["brightness"] = settings_->brightness;
+    document["contrast"] = settings_->contrast;
+    document["saturation"] = settings_->saturation;
+    document["vertical_flip"] = settings_->verticalFlip;
+    document["horizontal_mirror"] = settings_->horizontalMirror;
 
     String body;
     serializeJson(document, body);
@@ -321,6 +336,57 @@ void CameraWebServer::handleGetStatus(AsyncWebServerRequest* request) {
     String body;
     serializeJson(document, body);
     request->send(200, "application/json", body);
+}
+
+void CameraWebServer::handleCameraConfig(AsyncWebServerRequest* request) {
+    if (!isAuthenticated(request)) {
+        sendUnauthorized(request);
+        return;
+    }
+    if (!cameraConfigCallback_ || !request->hasArg("resolution") ||
+        !request->hasArg("quality") || !request->hasArg("frame_rate") ||
+        !request->hasArg("brightness") || !request->hasArg("contrast") ||
+        !request->hasArg("saturation") || !request->hasArg("vertical_flip") ||
+        !request->hasArg("horizontal_mirror")) {
+        sendJson(request, 400, "Missing camera settings");
+        return;
+    }
+
+    const int resolution = request->arg("resolution").toInt();
+    const int quality = request->arg("quality").toInt();
+    const int frameRate = request->arg("frame_rate").toInt();
+    const int brightness = request->arg("brightness").toInt();
+    const int contrast = request->arg("contrast").toInt();
+    const int saturation = request->arg("saturation").toInt();
+    const String flip = request->arg("vertical_flip");
+    const String mirror = request->arg("horizontal_mirror");
+    if (resolution < 8 || resolution > 12 || quality < 10 || quality > 63 ||
+        (frameRate != 5 && frameRate != 10 && frameRate != 15 && frameRate != 20) ||
+        brightness < -2 || brightness > 2 || contrast < -2 || contrast > 2 ||
+        saturation < -2 || saturation > 2 ||
+        (flip != "true" && flip != "false") || (mirror != "true" && mirror != "false")) {
+        sendJson(request, 400, "Invalid camera setting range");
+        return;
+    }
+
+    if (!cameraConfigCallback_(static_cast<uint8_t>(resolution), static_cast<uint8_t>(quality),
+                               static_cast<int8_t>(brightness), static_cast<int8_t>(contrast),
+                               static_cast<int8_t>(saturation), flip == "true", mirror == "true")) {
+        sendJson(request, 500, "Failed to apply camera settings");
+        return;
+    }
+    if (!settings_->writeCameraResolution(static_cast<uint8_t>(resolution)) ||
+        !settings_->writeCameraQuality(static_cast<uint8_t>(quality)) ||
+        !settings_->writeFrameRate(static_cast<uint8_t>(frameRate)) ||
+        !settings_->writeBrightness(static_cast<int8_t>(brightness)) ||
+        !settings_->writeContrast(static_cast<int8_t>(contrast)) ||
+        !settings_->writeSaturation(static_cast<int8_t>(saturation)) ||
+        !settings_->writeVerticalFlip(flip == "true") ||
+        !settings_->writeHorizontalMirror(mirror == "true")) {
+        sendJson(request, 500, "Camera applied but persistence failed");
+        return;
+    }
+    sendJson(request, 200, "Camera settings applied");
 }
 
 void CameraWebServer::handleCapture(AsyncWebServerRequest* request) {

@@ -131,7 +131,7 @@
 **Goal:** Add camera configuration to web interface
 
 **Tasks:**
-- [ ] Add camera settings section to HTML:
+- [x] Add camera settings section to HTML:
   - Resolution dropdown (QVGA/VGA/SVGA/XGA/UXGA)
   - JPEG Quality slider (10-63)
   - Frame Rate selector (5/10/15/20 fps)
@@ -140,13 +140,13 @@
   - Saturation slider (-2 to +2)
   - Vertical Flip checkbox
   - Horizontal Mirror checkbox
-- [ ] Implement camera configuration endpoint:
+- [x] Implement camera configuration endpoint:
   - `POST /api/camera/config` - apply settings in real-time
-- [ ] Add live preview to web UI:
+- [x] Add live preview to web UI:
   - `<img src="/stream">` element
   - FPS counter display
-- [ ] Implement camera reinitialization on resolution change
-- [ ] Test all camera settings changes
+- [x] Implement camera reinitialization on resolution change
+- [x] Test all camera settings changes and persistence (verified on ESP32-S3 hardware)
 
 **Files to modify:**
 - `html_pages.h` (add camera settings form)

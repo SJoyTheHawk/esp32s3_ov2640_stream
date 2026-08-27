@@ -51,6 +51,7 @@ static CameraSettings settings;
 static CameraWebServer webServer(80, &settings);
 static framesize_t currentResolution = FRAMESIZE_SVGA;
 static int currentQuality = 12;
+bool reinitCamera(framesize_t resolution, int quality);
 
 static size_t captureJpeg(uint8_t* destination, size_t capacity) {
     if (!destination || capacity == 0) return 0;
@@ -60,6 +61,27 @@ static size_t captureJpeg(uint8_t* destination, size_t capacity) {
     if (length > 0) memcpy(destination, fb->buf, length);
     esp_camera_fb_return(fb);
     return length;
+}
+
+static bool applyCameraConfig(uint8_t resolution, uint8_t quality, int8_t brightness,
+                              int8_t contrast, int8_t saturation, bool verticalFlip,
+                              bool horizontalMirror) {
+    const bool needsReinit = currentResolution != static_cast<framesize_t>(resolution) ||
+                             currentQuality != quality;
+    settings.brightness = brightness;
+    settings.contrast = contrast;
+    settings.saturation = saturation;
+    settings.verticalFlip = verticalFlip;
+    settings.horizontalMirror = horizontalMirror;
+    if (needsReinit && !reinitCamera(static_cast<framesize_t>(resolution), quality)) return false;
+    sensor_t* sensor = esp_camera_sensor_get();
+    if (!sensor) return false;
+    sensor->set_vflip(sensor, verticalFlip ? 1 : 0);
+    sensor->set_hmirror(sensor, horizontalMirror ? 1 : 0);
+    sensor->set_brightness(sensor, brightness);
+    sensor->set_contrast(sensor, contrast);
+    sensor->set_saturation(sensor, saturation);
+    return true;
 }
 
 // ==================== 摄像头初始化 ====================
@@ -306,6 +328,7 @@ void setup() {
     });
     webServer.setFrameCaptureCallback(captureJpeg);
     webServer.setFrameRateCallback([]() { return settings.frameRate; });
+    webServer.setCameraConfigCallback(applyCameraConfig);
     connectWiFi();
 
     // Starting while disconnected lets the server become reachable after a

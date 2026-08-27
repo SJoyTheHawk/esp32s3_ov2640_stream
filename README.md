@@ -28,6 +28,7 @@ server.py               Optional Flask receiver, recorder, and control UI
 IMPLEMENTATION_PLAN.md  Phased implementation plan
 PHASE2_BENCHMARK.md     Web authentication test procedure
 PHASE3_BENCHMARK.md     Network settings and status test procedure
+PHASE5_BENCHMARK.md     Camera settings UI and API test procedure
 ```
 
 Captured photos, recordings, backup copies, Python caches, and local build
