@@ -481,29 +481,27 @@ Normal:        Charging (0.5s):    Charged (1s):
 - [ ] Debounce button input properly
 
 **8.2 WiFi Provisioning Mode (AP + Captive Portal):**
-- [ ] Check `isWiFiConfigured` flag on boot
-- [ ] If not configured (or after factory reset), start in AP mode:
+- [x] Check `isWiFiConfigured` flag on boot
+- [x] If not configured (or after factory reset), start in AP mode:
   - SSID: `ESP32-CAM-Setup`
   - Password: `12345678` (or open network for easier access)
   - IP: `192.168.4.1` (ESP32 default AP IP)
-- [ ] Implement DNS server to redirect all domains to `192.168.4.1` (captive portal behavior)
-- [ ] Implement mDNS: `camera.local` → `192.168.4.1`
-- [ ] Create simplified setup web page:
-  - WiFi network scanner (list available SSIDs with signal strength bars)
-  - SSID input field with dropdown from scan results
-  - Password input field (show/hide toggle)
-  - Admin username/password setup fields
-  - "Connect" button with visual feedback (spinner during connection)
-  - Connection status messages
-- [ ] Handle WiFi credentials submission:
-  - Validate inputs (non-empty SSID, password length)
-  - Save credentials to NVS
-  - Set `isWiFiConfigured = true`
-  - Attempt connection to configured WiFi network
-  - Wait up to 10 seconds for connection
-  - If successful, show success message and reboot into Station mode after 3s
-  - If failed, stay in AP mode and display error message with retry option
-- [ ] Add timeout logic: stay in AP mode for 10 minutes max, then try Station mode anyway
+- [x] Implement DNS server to redirect all domains to `192.168.4.1` (captive portal behavior)
+- [x] Implement mDNS: `camera.local` → `192.168.4.1`
+- [x] Create simplified setup web page:
+  - [x] WiFi network scanner and SSID selection
+  - [x] SSID and password input fields
+  - [x] Admin and user username/password setup fields
+  - [x] Connect button and connection status messages
+- [x] Handle WiFi credentials submission:
+  - [x] Validate inputs
+  - [x] Save credentials to NVS
+  - [x] Set `isWiFiConfigured = true`
+  - [x] Attempt connection to configured WiFi network
+  - [x] Wait up to 10 seconds for connection
+  - [x] If successful, show success message and reboot into Station mode after 3s
+  - [x] If failed, stay in AP mode and display error message with retry option
+- [x] Add timeout logic: stay in AP mode for 10 minutes max, then try Station mode anyway
 - [ ] Add LED indicator for AP mode status (if available - slow double-blink pattern)
 - [ ] Test captive portal auto-popup on iOS and Android devices
 

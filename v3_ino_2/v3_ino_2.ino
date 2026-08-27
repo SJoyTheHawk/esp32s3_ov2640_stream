@@ -20,6 +20,7 @@
 #include "camera_settings.h"
 #include "web_server.h"
 #include "factory_reset.h"
+#include "wifi_provisioning.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -66,6 +67,7 @@ static const size_t FRAME_BUFFER_CAPACITY = 512 * 1024;
 static TaskHandle_t cameraTaskHandle;
 static TaskHandle_t networkTaskHandle;
 static FactoryReset factoryReset(&settings, FACTORY_RESET_GPIO_NUM, LED_GPIO_NUM);
+static WiFiProvisioning provisioning(&settings);
 bool reinitCamera(framesize_t resolution, int quality);
 
 static size_t captureJpeg(uint8_t* destination, size_t capacity) {
@@ -346,6 +348,21 @@ void setup() {
     settings.readFromNVS();
     settings.printSettings();
     factoryReset.begin();
+
+    if (!settings.checkWiFiConfigured()) {
+        Serial0.println("[PROVISION] WiFi not configured; entering AP mode");
+        if (provisioning.startAPMode()) {
+            while (provisioning.isActive() && !provisioning.timedOut()) {
+                provisioning.handleDNS();
+                factoryReset.loop();
+                delay(10);
+            }
+            if (provisioning.isActive()) {
+                Serial0.println("[PROVISION] AP timeout; trying Station mode");
+                provisioning.stopAPMode();
+            }
+        }
+    }
 
 #if NVS_TEST_WRITE
     Serial0.println("[NVS TEST] Writing test values...");

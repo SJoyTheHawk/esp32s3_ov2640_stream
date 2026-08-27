@@ -23,8 +23,8 @@ public:
 
         // static constexpr char WIFI_SSID[32] = "";
         // static constexpr char WIFI_PASSWORD[32] = "";
-        static constexpr char WIFI_SSID[32] = "South Park";
-        static constexpr char WIFI_PASSWORD[32] = "qwerasdf";
+        static constexpr char WIFI_SSID[32] = "";
+        static constexpr char WIFI_PASSWORD[32] = "";
 
         // OV2640 frame-size values: QVGA=8, VGA=9, SVGA=10, XGA=11, UXGA=12.
         static constexpr uint8_t CAMERA_RESOLUTION = 10;
