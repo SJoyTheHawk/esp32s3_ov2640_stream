@@ -1,8 +1,8 @@
 {
   "stream": {
-    "url": "http://192.168.1.201/stream",
+    "url": "http://192.168.2.44/stream",
     "username": "admin",
-    "password": "abcd1234",
+    "password": "admin",
     "auto_reconnect": true,
     "reconnect_delay": 5
   },
@@ -20,7 +20,7 @@
   "ui": {
     "theme": "dark",
     "window_geometry": [
-      100,
+      84,
       66,
       1000,
       800

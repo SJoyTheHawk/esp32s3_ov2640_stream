@@ -20,25 +20,34 @@ class StreamWorker(QThread):
     fps_update = pyqtSignal(float)
     error_signal = pyqtSignal(str)
     connected_signal = pyqtSignal()
+    reconnecting_signal = pyqtSignal(float)
 
-    def __init__(self, url: str, username: str = None, password: str = None):
+    def __init__(self, url: str, username: str = None, password: str = None,
+                 auto_reconnect: bool = True, reconnect_delay: float = 5):
         super().__init__()
         self.url = url
         self.username = username
         self.password = password
+        self.auto_reconnect = auto_reconnect
+        self.reconnect_delay = max(0, reconnect_delay)
         self.running = True
         self.frame_times = []
 
     def run(self):
         """Main thread loop"""
-        try:
-            # Connect to stream using mjpeg_stream helper
-            stream = frames(self.url, self.username, self.password)
-            self.connected_signal.emit()
+        while self.running:
+            stream = None
+            connected = False
+            try:
+                stream = frames(self.url, self.username, self.password)
 
-            while self.running:
-                try:
+                while self.running:
                     frame = next(stream)
+
+                    if not connected:
+                        connected = True
+                        self.frame_times.clear()
+                        self.connected_signal.emit()
 
                     # Calculate FPS
                     now = time.time()
@@ -52,15 +61,31 @@ class StreamWorker(QThread):
                     # Emit frame
                     self.frame_ready.emit(frame)
 
-                except StopIteration:
+            except StopIteration:
+                if self.running:
                     self.error_signal.emit("Stream ended")
-                    break
-                except Exception as e:
-                    self.error_signal.emit(f"Frame read error: {e}")
-                    time.sleep(0.1)
+            except Exception as e:
+                if self.running:
+                    context = "Stream interrupted" if connected else "Connection failed"
+                    self.error_signal.emit(f"{context}: {e}")
+            finally:
+                if stream is not None:
+                    stream.close()
 
-        except Exception as e:
-            self.error_signal.emit(f"Connection failed: {e}")
+            if not self.running or not self.auto_reconnect:
+                break
+
+            self.reconnecting_signal.emit(self.reconnect_delay)
+            self._wait_before_reconnect()
+
+    def _wait_before_reconnect(self):
+        """Wait for the retry delay while allowing prompt shutdown."""
+        deadline = time.monotonic() + self.reconnect_delay
+        while self.running:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            self.msleep(min(100, max(1, int(remaining * 1000))))
 
     def stop(self):
         """Stop the worker thread"""

@@ -15,11 +15,28 @@ pip install -r requirements.txt
 # Method 1: Direct
 python3 camera_viewer_pro.py
 
-# Method 2: Using launcher script
+# Method 2: Using the shell launcher
 ./run.sh
 
 # Method 3: Run tests first
 python3 test_components.py && python3 camera_viewer_pro.py
+```
+
+### Double-click launchers
+
+- **macOS:** Double-click `Professional Viewer.command`. If macOS blocks it after
+  downloading or copying, Control-click it, choose **Open**, then confirm **Open**.
+- **Windows:** Double-click `Professional Viewer.bat`.
+
+The launchers use Python installed on the computer. Install the dependencies once
+before the first launch:
+
+```bash
+# macOS
+python3 -m pip install -r requirements.txt
+
+# Windows (Command Prompt)
+py -3 -m pip install -r requirements.txt
 ```
 
 ## First Time Setup

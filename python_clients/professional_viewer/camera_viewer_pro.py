@@ -142,12 +142,21 @@ class CameraViewerPro(QMainWindow):
         url = self.config.get('stream.url')
         username = self.config.get('stream.username')
         password = self.config.get('stream.password')
+        auto_reconnect = self.config.get('stream.auto_reconnect', True)
+        reconnect_delay = self.config.get('stream.reconnect_delay', 5)
 
-        self.stream_worker = StreamWorker(url, username, password)
+        self.stream_worker = StreamWorker(
+            url,
+            username,
+            password,
+            auto_reconnect=auto_reconnect,
+            reconnect_delay=reconnect_delay
+        )
         self.stream_worker.frame_ready.connect(self.stream_widget.update_frame)
         self.stream_worker.fps_update.connect(self.stream_widget.set_fps)
         self.stream_worker.error_signal.connect(self.handle_stream_error)
         self.stream_worker.connected_signal.connect(self.on_stream_connected)
+        self.stream_worker.reconnecting_signal.connect(self.on_stream_reconnecting)
         self.stream_worker.start()
 
         self.status_bar.showMessage("Connecting to stream...", 3000)
@@ -173,6 +182,14 @@ class CameraViewerPro(QMainWindow):
         self.connection_label.setText("● Error")
         self.connection_label.setStyleSheet("color: #ff4444; font-weight: bold; font-size: 15px;")
         self.status_bar.showMessage(f"Stream error: {error}", 5000)
+
+    def on_stream_reconnecting(self, delay):
+        """Show that the stream worker is waiting for another attempt."""
+        self.connection_label.setText("● Reconnecting")
+        self.connection_label.setStyleSheet(
+            "color: #ffaa00; font-weight: bold; font-size: 15px;"
+        )
+        self.status_bar.showMessage(f"Reconnecting in {delay:g} seconds...", 0)
 
     def capture_single(self):
         """Capture single frame"""
