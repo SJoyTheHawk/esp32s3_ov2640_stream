@@ -1,0 +1,31 @@
+{
+  "stream": {
+    "url": "http://192.168.1.201/stream",
+    "username": "admin",
+    "password": "abcd1234",
+    "auto_reconnect": true,
+    "reconnect_delay": 5
+  },
+  "capture": {
+    "save_directory": "./captures",
+    "burst_fps": 3,
+    "photo_format": "jpg",
+    "photo_quality": 95
+  },
+  "video": {
+    "codec": "MJPEG",
+    "fps": 20,
+    "default_name": "recording"
+  },
+  "ui": {
+    "theme": "dark",
+    "window_geometry": [
+      100,
+      66,
+      1000,
+      800
+    ],
+    "show_fps": true,
+    "show_resolution": true
+  }
+}

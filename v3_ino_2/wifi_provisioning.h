@@ -29,7 +29,6 @@ private:
     bool active_;
     bool restartPending_;
     unsigned long restartAtMs_;
-    AsyncWebServerRequest* configureRequest_;
     String pendingSSID_;
     String pendingWiFiPassword_;
     String pendingAdminUsername_;
@@ -37,6 +36,7 @@ private:
     String pendingUserUsername_;
     String pendingUserPassword_;
     unsigned long connectionDeadlineMs_;
+    bool connectionTestInProgress_;
     bool connectionTestCompleted_;
     bool connectionTestSucceeded_;
     String connectionTestMessage_;

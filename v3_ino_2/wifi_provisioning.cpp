@@ -12,8 +12,9 @@ constexpr char AP_PASSWORD[] = "12345678";
 
 WiFiProvisioning::WiFiProvisioning(CameraSettings* settings)
     : settings_(settings), server_(80), startedAtMs_(0), active_(false),
-      restartPending_(false), restartAtMs_(0), configureRequest_(nullptr),
-      connectionDeadlineMs_(0), connectionTestCompleted_(false), connectionTestSucceeded_(false) {}
+      restartPending_(false), restartAtMs_(0), connectionDeadlineMs_(0),
+      connectionTestInProgress_(false), connectionTestCompleted_(false),
+      connectionTestSucceeded_(false) {}
 
 WiFiProvisioning::~WiFiProvisioning() { stopAPMode(); }
 
@@ -73,7 +74,7 @@ void WiFiProvisioning::setupWebHandlers() {
     });
     server_.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
         // Return the current status of WiFi testing
-        if (configureRequest_) {
+        if (connectionTestInProgress_) {
             // Test is still in progress
             request->send(200, "application/json", "{\"testing\":true}");
         } else if (connectionTestCompleted_) {
@@ -121,7 +122,7 @@ String WiFiProvisioning::scanNetworks() const {
 }
 
 void WiFiProvisioning::handleConfigure(AsyncWebServerRequest* request) {
-    if (configureRequest_) {
+    if (connectionTestInProgress_) {
         request->send(409, "application/json", "{\"success\":false,\"message\":\"A WiFi check is already in progress\"}");
         return;
     }
@@ -151,7 +152,10 @@ void WiFiProvisioning::handleConfigure(AsyncWebServerRequest* request) {
     pendingAdminPassword_ = adminPassword;
     pendingUserUsername_ = userUsername;
     pendingUserPassword_ = userPassword;
-    configureRequest_ = request;
+    connectionTestInProgress_ = true;
+    connectionTestCompleted_ = false;
+    connectionTestSucceeded_ = false;
+    connectionTestMessage_ = "";
     connectionDeadlineMs_ = millis() + 12000UL;
 
     Serial.printf("[PROVISION] Testing WiFi: %s\n", pendingSSID_.c_str());
@@ -176,27 +180,21 @@ void WiFiProvisioning::handleConfigure(AsyncWebServerRequest* request) {
     // Now begin the station connection test
     WiFi.begin(pendingSSID_.c_str(), pendingWiFiPassword_.c_str());
     Serial.println("[PROVISION] WiFi.begin() called, waiting for connection...");
+    request->send(202, "application/json", "{\"success\":true,\"message\":\"WiFi check started\"}");
 }
 
 void WiFiProvisioning::processConnection() {
-    if (!configureRequest_) return;
+    if (!connectionTestInProgress_) return;
     if (WiFi.status() != WL_CONNECTED && static_cast<long>(millis() - connectionDeadlineMs_) < 0) return;
-
-    AsyncWebServerRequest* request = configureRequest_;
-    configureRequest_ = nullptr;
 
     const bool connected = WiFi.status() == WL_CONNECTED;
 
     if (!connected) {
         Serial.printf("[PROVISION] WiFi connection failed (status: %d)\n", WiFi.status());
-
-        // Send response BEFORE changing network modes to avoid request invalidation
-        if (request) {
-            request->send(200, "application/json", "{\"success\":false,\"message\":\"Could not connect; check WiFi credentials and retry\"}");
-        }
-
-        // Give time for response to be sent before network changes
-        delay(100);
+        connectionTestSucceeded_ = false;
+        connectionTestMessage_ = "Could not connect; check WiFi credentials and retry";
+        connectionTestCompleted_ = true;
+        connectionTestInProgress_ = false;
 
         // Clean disconnect
         WiFi.disconnect(true);
@@ -227,13 +225,10 @@ void WiFiProvisioning::processConnection() {
         !settings_->writeUserPassword(pendingUserPassword_.c_str(), pendingUserPassword_.length()) ||
         !settings_->setWiFiConfigured(true)) {
         Serial.println("[PROVISION] Failed to save settings to NVS");
-
-        // Send response BEFORE changing network modes
-        if (request) {
-            request->send(500, "application/json", "{\"success\":false,\"message\":\"Connected, but failed to save settings; retry\"}");
-        }
-
-        delay(100);
+        connectionTestSucceeded_ = false;
+        connectionTestMessage_ = "Connected, but failed to save settings; retry";
+        connectionTestCompleted_ = true;
+        connectionTestInProgress_ = false;
 
         WiFi.disconnect(true);
         delay(200);
@@ -246,9 +241,10 @@ void WiFiProvisioning::processConnection() {
     }
 
     Serial.println("[PROVISION] Settings saved. Rebooting...");
-    if (request) {
-        request->send(200, "application/json", "{\"success\":true,\"message\":\"Connected. Rebooting...\"}");
-    }
+    connectionTestSucceeded_ = true;
+    connectionTestMessage_ = "Connected. Rebooting...";
+    connectionTestCompleted_ = true;
+    connectionTestInProgress_ = false;
     restartPending_ = true;
     restartAtMs_ = millis() + 3000UL;
 }
