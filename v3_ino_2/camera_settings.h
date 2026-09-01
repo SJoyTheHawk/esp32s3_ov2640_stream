@@ -26,7 +26,8 @@ public:
         static constexpr char WIFI_SSID[32] = "";
         static constexpr char WIFI_PASSWORD[32] = "";
 
-        // OV2640 frame-size values: QVGA=8, VGA=9, SVGA=10, XGA=11, UXGA=12.
+        // Stable API/NVS values: QVGA=8, VGA=9, SVGA=10, XGA=11, UXGA=12.
+        // Convert these values to framesize_t before calling the camera driver.
         static constexpr uint8_t CAMERA_RESOLUTION = 10;
         static constexpr uint8_t CAMERA_QUALITY = 12;
         static constexpr uint8_t FRAME_RATE = 20;

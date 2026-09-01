@@ -70,6 +70,17 @@ static FactoryReset factoryReset(&settings, FACTORY_RESET_GPIO_NUM, LED_GPIO_NUM
 static WiFiProvisioning provisioning(&settings);
 bool reinitCamera(framesize_t resolution, int quality);
 
+static bool frameSizeForResolutionSetting(uint8_t resolution, framesize_t& frameSize) {
+    switch (resolution) {
+        case 8:  frameSize = FRAMESIZE_QVGA; return true;
+        case 9:  frameSize = FRAMESIZE_VGA;  return true;
+        case 10: frameSize = FRAMESIZE_SVGA; return true;
+        case 11: frameSize = FRAMESIZE_XGA;  return true;
+        case 12: frameSize = FRAMESIZE_UXGA; return true;
+        default: return false;
+    }
+}
+
 static size_t captureJpeg(uint8_t* destination, size_t capacity) {
     if (!destination || capacity == 0 || !frameMutex || !latestFrame) return 0;
     if (xSemaphoreTake(frameMutex, pdMS_TO_TICKS(1000)) != pdTRUE) return 0;
@@ -82,16 +93,18 @@ static size_t captureJpeg(uint8_t* destination, size_t capacity) {
 static bool applyCameraConfig(uint8_t resolution, uint8_t quality, int8_t brightness,
                               int8_t contrast, int8_t saturation, bool verticalFlip,
                               bool horizontalMirror) {
+    framesize_t requestedFrameSize;
+    if (!frameSizeForResolutionSetting(resolution, requestedFrameSize)) return false;
     if (!cameraMutex) return false;
     if (xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(3000)) != pdTRUE) return false;
-    const bool needsReinit = currentResolution != static_cast<framesize_t>(resolution) ||
+    const bool needsReinit = currentResolution != requestedFrameSize ||
                              currentQuality != quality;
     settings.brightness = brightness;
     settings.contrast = contrast;
     settings.saturation = saturation;
     settings.verticalFlip = verticalFlip;
     settings.horizontalMirror = horizontalMirror;
-    if (needsReinit && !reinitCamera(static_cast<framesize_t>(resolution), quality)) {
+    if (needsReinit && !reinitCamera(requestedFrameSize, quality)) {
         xSemaphoreGive(cameraMutex);
         return false;
     }
@@ -294,14 +307,14 @@ void handleCommand(const String& resp) {
         // 解析分辨率值
         int valIdx = resp.indexOf("\"value\"");
         if (valIdx >= 0) {
-            framesize_t newRes = currentResolution;
+            uint8_t newResolution = settings.cameraResolution;
             int newQuality = currentQuality;
-            
-            if (resp.indexOf("\"QVGA\"") >= 0) newRes = FRAMESIZE_QVGA;
-            else if (resp.indexOf("\"VGA\"") >= 0) newRes = FRAMESIZE_VGA;
-            else if (resp.indexOf("\"SVGA\"") >= 0) newRes = FRAMESIZE_SVGA;
-            else if (resp.indexOf("\"XGA\"") >= 0) newRes = FRAMESIZE_XGA;
-            else if (resp.indexOf("\"UXGA\"") >= 0) newRes = FRAMESIZE_UXGA;
+
+            if (resp.indexOf("\"QVGA\"") >= 0) newResolution = 8;
+            else if (resp.indexOf("\"VGA\"") >= 0) newResolution = 9;
+            else if (resp.indexOf("\"SVGA\"") >= 0) newResolution = 10;
+            else if (resp.indexOf("\"XGA\"") >= 0) newResolution = 11;
+            else if (resp.indexOf("\"UXGA\"") >= 0) newResolution = 12;
             
             // 解析质量值
             int qIdx = resp.indexOf("\"quality\"");
@@ -316,9 +329,12 @@ void handleCommand(const String& resp) {
                 }
             }
             
-            Serial0.printf("[CMD] set_resolution: %d, quality: %d\n", newRes, newQuality);
-            if (reinitCamera(newRes, newQuality)) {
-                settings.writeCameraResolution(static_cast<uint8_t>(newRes));
+            framesize_t newFrameSize;
+            if (!frameSizeForResolutionSetting(newResolution, newFrameSize)) return;
+            Serial0.printf("[CMD] set_resolution: setting=%u, frame_size=%d, quality=%d\n",
+                           newResolution, newFrameSize, newQuality);
+            if (reinitCamera(newFrameSize, newQuality)) {
+                settings.writeCameraResolution(newResolution);
                 settings.writeCameraQuality(static_cast<uint8_t>(newQuality));
             }
         }
@@ -391,9 +407,10 @@ void setup() {
     }
 #endif
 
-    // Ignore invalid values left by older firmware or a damaged NVS entry.
-    if (settings.cameraResolution < 8 || settings.cameraResolution > 12) {
+    // Translate stable API/NVS values to the enum used by this camera library.
+    if (!frameSizeForResolutionSetting(settings.cameraResolution, currentResolution)) {
         settings.cameraResolution = CameraSettings::DefaultValues::CAMERA_RESOLUTION;
+        frameSizeForResolutionSetting(settings.cameraResolution, currentResolution);
     }
     if (settings.cameraQuality < 10 || settings.cameraQuality > 63) {
         settings.cameraQuality = CameraSettings::DefaultValues::CAMERA_QUALITY;
@@ -402,7 +419,6 @@ void setup() {
         settings.frameRate != 15 && settings.frameRate != 20) {
         settings.frameRate = CameraSettings::DefaultValues::FRAME_RATE;
     }
-    currentResolution = static_cast<framesize_t>(settings.cameraResolution);
     currentQuality = settings.cameraQuality;
 
     if (!initCamera(currentResolution, currentQuality)) {

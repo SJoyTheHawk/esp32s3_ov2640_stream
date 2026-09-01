@@ -14,14 +14,14 @@
   },
   "video": {
     "codec": "MJPEG",
-    "fps": 20,
+    "fps": 5,
     "default_name": "recording"
   },
   "ui": {
     "theme": "dark",
     "window_geometry": [
-      84,
-      66,
+      179,
+      65,
       1000,
       800
     ],

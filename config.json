@@ -1,7 +1,0 @@
-{
-  "video_fps": 20,
-  "frame_width": 800,
-  "frame_height": 600,
-  "jpeg_quality": 12,
-  "queue_size": 600
-}

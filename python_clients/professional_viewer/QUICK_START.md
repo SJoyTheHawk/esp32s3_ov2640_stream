@@ -24,9 +24,12 @@ python3 test_components.py && python3 camera_viewer_pro.py
 
 ### Double-click launchers
 
-- **macOS:** Double-click `Professional Viewer.command`. If macOS blocks it after
+- **macOS:** In the parent `python_clients` folder, double-click `Professional Viewer.command`. If macOS blocks it after
   downloading or copying, Control-click it, choose **Open**, then confirm **Open**.
-- **Windows:** Double-click `Professional Viewer.bat`.
+- **Windows:** In the parent `python_clients` folder, double-click `Professional Viewer.bat`.
+
+To transfer the application, copy both launchers and the entire
+`professional_viewer` folder. Keep the launchers next to the folder.
 
 The launchers use Python installed on the computer. Install the dependencies once
 before the first launch:
