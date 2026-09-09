@@ -2,6 +2,7 @@
 """Stream display widget"""
 import cv2
 import numpy as np
+from mjpeg_stream import StreamFrame
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QFont, QColor
 from PyQt6.QtWidgets import QLabel
@@ -10,11 +11,12 @@ from PyQt6.QtWidgets import QLabel
 class StreamWidget(QLabel):
     """Widget for displaying live stream with FPS overlay"""
 
-    frame_updated = pyqtSignal(np.ndarray)  # Emits when frame changes
+    frame_updated = pyqtSignal(np.ndarray)  # Emits BGR frames for video recording
 
     def __init__(self):
         super().__init__()
         self.current_frame = None
+        self.current_metadata = None
         self.fps = 0.0
         self.resolution = ""
 
@@ -24,9 +26,11 @@ class StreamWidget(QLabel):
         self.setText("Connecting...")
         self.setFont(QFont("Arial", 18))
 
-    def update_frame(self, frame: np.ndarray):
+    def update_frame(self, packet: StreamFrame):
         """Update displayed frame"""
+        frame = packet.image
         self.current_frame = frame.copy()
+        self.current_metadata = packet
         h, w = frame.shape[:2]
         self.resolution = f"{w}x{h}"
 
@@ -52,10 +56,10 @@ class StreamWidget(QLabel):
         self.fps = fps
         self.update()
 
-    def get_current_frame(self) -> np.ndarray:
-        """Get current frame (copy)"""
+    def get_current_frame(self):
+        """Get current frame and its metadata."""
         if self.current_frame is not None:
-            return self.current_frame.copy()
+            return self.current_frame.copy(), self.current_metadata
         return None
 
     def paintEvent(self, event):

@@ -6,13 +6,13 @@ import cv2
 import numpy as np
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from mjpeg_stream import frames
+from mjpeg_stream import frames_with_metadata
 
 
 class StreamWorker(QThread):
     """Worker thread for reading MJPEG stream"""
 
-    frame_ready = pyqtSignal(np.ndarray)  # Emits BGR frame
+    frame_ready = pyqtSignal(object)  # Emits StreamFrame
     fps_update = pyqtSignal(float)
     error_signal = pyqtSignal(str)
     connected_signal = pyqtSignal()
@@ -35,7 +35,7 @@ class StreamWorker(QThread):
             stream = None
             connected = False
             try:
-                stream = frames(self.url, self.username, self.password)
+                stream = frames_with_metadata(self.url, self.username, self.password)
 
                 while self.running:
                     frame = next(stream)

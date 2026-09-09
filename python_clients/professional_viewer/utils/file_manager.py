@@ -57,3 +57,7 @@ class FileManager:
             if not new_path.exists():
                 return new_path
             counter += 1
+
+    @staticmethod
+    def metadata_filename(filepath: Path) -> Path:
+        return filepath.with_suffix('.json')

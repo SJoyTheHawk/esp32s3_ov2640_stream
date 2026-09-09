@@ -36,6 +36,8 @@ public:
         static constexpr int8_t SATURATION = 0;
         static constexpr bool VERTICAL_FLIP = false;
         static constexpr bool HORIZONTAL_MIRROR = false;
+        static constexpr int32_t WEIGHT_OFFSET = 0;
+        static constexpr float WEIGHT_SCALE = 1.0f;
 
         static constexpr bool PYTHON_SERVER_ENABLED = false;
         static constexpr char PYTHON_SERVER_IP[32] = "192.168.1.183";
@@ -67,6 +69,8 @@ public:
     int8_t saturation;
     bool verticalFlip;
     bool horizontalMirror;
+    int32_t weightOffset;
+    float weightScale;
 
     bool pythonServerEnabled;
     char pythonServerIP[32];
@@ -110,6 +114,8 @@ public:
     bool writeSaturation(int8_t value);
     bool writeVerticalFlip(bool flip);
     bool writeHorizontalMirror(bool mirror);
+    bool writeWeightOffset(int32_t offset);
+    bool writeWeightScale(float scale);
 
     bool writePythonServerEnabled(bool enabled);
     bool writePythonServerIP(const char* ip, size_t length);

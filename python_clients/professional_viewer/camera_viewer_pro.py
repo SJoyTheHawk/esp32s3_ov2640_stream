@@ -193,10 +193,11 @@ class CameraViewerPro(QMainWindow):
 
     def capture_single(self):
         """Capture single frame"""
-        frame = self.stream_widget.get_current_frame()
-        if frame is not None:
+        current = self.stream_widget.get_current_frame()
+        if current is not None:
+            frame, packet = current
             filename = self.file_manager.generate_photo_filename()
-            self.save_worker.save_frame(frame, filename)
+            self.save_worker.save_frame(frame, filename, self._metadata(packet))
             self.photo_count += 1
             self.status_bar.showMessage(f"Saved: {filename.name}", 3000)
             self.update_stats()
@@ -220,11 +221,12 @@ class CameraViewerPro(QMainWindow):
 
     def capture_burst_frame(self):
         """Capture one frame during burst"""
-        frame = self.stream_widget.get_current_frame()
-        if frame is not None:
+        current = self.stream_widget.get_current_frame()
+        if current is not None:
+            frame, packet = current
             self.frame_count += 1
             filename = self.file_manager.generate_burst_filename(self.frame_count)
-            self.save_worker.save_frame(frame, filename)
+            self.save_worker.save_frame(frame, filename, self._metadata(packet))
             self.capture_btn.set_frame_count(self.frame_count)
 
     def stop_burst(self):
@@ -237,6 +239,14 @@ class CameraViewerPro(QMainWindow):
         self.status_bar.showMessage(f"Burst complete: {self.frame_count} frames", 3000)
         self.capture_btn.reset()
         self.update_stats()
+
+    @staticmethod
+    def _metadata(packet):
+        if packet is None:
+            return {"weight_valid": False}
+        return {"weight_g": packet.weight_grams, "weight_raw": packet.weight_raw,
+                "weight_age_ms": packet.weight_age_ms, "weight_valid": packet.weight_valid,
+                "weight_stable": packet.weight_stable}
 
     def toggle_recording(self, checked):
         """Toggle video recording"""

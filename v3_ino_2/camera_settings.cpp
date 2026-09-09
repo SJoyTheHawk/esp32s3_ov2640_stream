@@ -1,6 +1,7 @@
 #include "camera_settings.h"
 
 #include <cstring>
+#include <cmath>
 
 const char* const CameraSettings::NVS_NAMESPACE = "camera";
 
@@ -52,6 +53,8 @@ void CameraSettings::setDefaults() {
     saturation = DefaultValues::SATURATION;
     verticalFlip = DefaultValues::VERTICAL_FLIP;
     horizontalMirror = DefaultValues::HORIZONTAL_MIRROR;
+    weightOffset = DefaultValues::WEIGHT_OFFSET;
+    weightScale = DefaultValues::WEIGHT_SCALE;
 
     pythonServerEnabled = DefaultValues::PYTHON_SERVER_ENABLED;
     strncpy(pythonServerIP, DefaultValues::PYTHON_SERVER_IP, sizeof(pythonServerIP));
@@ -99,6 +102,8 @@ bool CameraSettings::initializeNVS() {
     ok &= prefs.putChar("saturation", DefaultValues::SATURATION) > 0;
     ok &= prefs.putBool("vFlip", DefaultValues::VERTICAL_FLIP);
     ok &= prefs.putBool("hMirror", DefaultValues::HORIZONTAL_MIRROR);
+    ok &= prefs.putInt("wtOffset", DefaultValues::WEIGHT_OFFSET) > 0;
+    ok &= prefs.putFloat("wtScale", DefaultValues::WEIGHT_SCALE) > 0;
     ok &= prefs.putBool("pyEnabled", DefaultValues::PYTHON_SERVER_ENABLED);
     prefs.putString("pyIP", DefaultValues::PYTHON_SERVER_IP);
     ok &= prefs.putUShort("pyPort", DefaultValues::PYTHON_SERVER_PORT) > 0;
@@ -107,6 +112,7 @@ bool CameraSettings::initializeNVS() {
     ok &= prefs.isKey("username") && prefs.isKey("password") &&
           prefs.isKey("userUsername") && prefs.isKey("userPassword") &&
           prefs.isKey("wifiConfigured") &&
+          prefs.isKey("wtOffset") && prefs.isKey("wtScale") &&
           prefs.isKey("wifiSSID") && prefs.isKey("wifiPass") &&
           prefs.isKey("pyIP") && prefs.isKey("deviceName") && prefs.isKey("mdnsHost");
     if (ok) {
@@ -173,6 +179,9 @@ void CameraSettings::readFromNVS() {
     saturation = prefs.getChar("saturation", DefaultValues::SATURATION);
     verticalFlip = prefs.getBool("vFlip", DefaultValues::VERTICAL_FLIP);
     horizontalMirror = prefs.getBool("hMirror", DefaultValues::HORIZONTAL_MIRROR);
+    weightOffset = prefs.getInt("wtOffset", DefaultValues::WEIGHT_OFFSET);
+    weightScale = prefs.getFloat("wtScale", DefaultValues::WEIGHT_SCALE);
+    if (!isfinite(weightScale) || weightScale == 0.0f) weightScale = DefaultValues::WEIGHT_SCALE;
 
     pythonServerEnabled = prefs.getBool("pyEnabled", DefaultValues::PYTHON_SERVER_ENABLED);
     value = prefs.getString("pyIP", DefaultValues::PYTHON_SERVER_IP);
@@ -400,6 +409,22 @@ bool CameraSettings::writeHorizontalMirror(bool mirror) {
     return ok;
 }
 
+bool CameraSettings::writeWeightOffset(int32_t offset) {
+    if (!prefs.begin(NVS_NAMESPACE, false)) return false;
+    const bool ok = prefs.putInt("wtOffset", offset) > 0;
+    prefs.end();
+    if (ok) weightOffset = offset;
+    return ok;
+}
+
+bool CameraSettings::writeWeightScale(float scale) {
+    if (!isfinite(scale) || scale == 0.0f || !prefs.begin(NVS_NAMESPACE, false)) return false;
+    const bool ok = prefs.putFloat("wtScale", scale) > 0;
+    prefs.end();
+    if (ok) weightScale = scale;
+    return ok;
+}
+
 bool CameraSettings::writePythonServerEnabled(bool enabled) {
     if (!prefs.begin(NVS_NAMESPACE, false)) return false;
     const bool ok = prefs.putBool("pyEnabled", enabled);
@@ -446,6 +471,8 @@ void CameraSettings::printSettings() {
     Serial.printf("Saturation: %d\n", saturation);
     Serial.printf("Vertical Flip: %s\n", verticalFlip ? "Yes" : "No");
     Serial.printf("Horizontal Mirror: %s\n", horizontalMirror ? "Yes" : "No");
+    Serial.printf("Weight Offset: %ld\n", static_cast<long>(weightOffset));
+    Serial.printf("Weight Scale: %.6f\n", weightScale);
     Serial.printf("Python Server Enabled: %s\n", pythonServerEnabled ? "Yes" : "No");
     Serial.printf("Python Server: %s:%u\n", pythonServerIP, pythonServerPort);
     Serial.printf("Device Name: %s\n", deviceName);

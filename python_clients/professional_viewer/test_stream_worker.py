@@ -6,6 +6,12 @@ from unittest.mock import patch
 import numpy as np
 
 from workers.stream_worker import StreamWorker
+from mjpeg_stream import StreamFrame
+
+
+def packet():
+    image = np.zeros((1, 1, 3), dtype=np.uint8)
+    return StreamFrame(image=image, jpeg=b"", weight_valid=False)
 
 
 class StreamWorkerTest(unittest.TestCase):
@@ -19,13 +25,13 @@ class StreamWorkerTest(unittest.TestCase):
             attempts.append(None)
             if len(attempts) == 1:
                 raise ConnectionError("camera unavailable")
-            yield np.zeros((1, 1, 3), dtype=np.uint8)
+            yield packet()
 
         worker.connected_signal.connect(lambda: connected.append(None))
         worker.frame_ready.connect(lambda _frame: worker.stop())
         worker.error_signal.connect(errors.append)
 
-        with patch("workers.stream_worker.frames", fake_frames):
+        with patch("workers.stream_worker.frames_with_metadata", fake_frames):
             worker.run()
 
         self.assertEqual(len(attempts), 2)
@@ -41,7 +47,7 @@ class StreamWorkerTest(unittest.TestCase):
             raise ConnectionError("camera unavailable")
             yield
 
-        with patch("workers.stream_worker.frames", fake_frames):
+        with patch("workers.stream_worker.frames_with_metadata", fake_frames):
             worker.run()
 
         self.assertEqual(len(attempts), 1)
@@ -53,7 +59,7 @@ class StreamWorkerTest(unittest.TestCase):
 
         def fake_frames(*_args):
             attempts.append(None)
-            yield np.zeros((1, 1, 3), dtype=np.uint8)
+            yield packet()
 
         def receive_frame(_frame):
             frames_received.append(None)
@@ -62,7 +68,7 @@ class StreamWorkerTest(unittest.TestCase):
 
         worker.frame_ready.connect(receive_frame)
 
-        with patch("workers.stream_worker.frames", fake_frames):
+        with patch("workers.stream_worker.frames_with_metadata", fake_frames):
             worker.run()
 
         self.assertEqual(len(attempts), 2)

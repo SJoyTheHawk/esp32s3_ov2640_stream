@@ -52,6 +52,8 @@
 // ==================== LED 反馈引脚 ====================
 #define LED_GPIO_NUM       48  // 板载 LED（根据模块调整）
 #define FACTORY_RESET_GPIO_NUM 19
+#define HX711_DT_GPIO_NUM      17
+#define HX711_SCK_GPIO_NUM     18
 
 // ==================== 全局变量 ====================
 
@@ -63,11 +65,13 @@ static SemaphoreHandle_t cameraMutex;
 static SemaphoreHandle_t frameMutex;
 static uint8_t* latestFrame;
 static size_t latestFrameLength;
+static WeightReading latestFrameWeight;
 static const size_t FRAME_BUFFER_CAPACITY = 512 * 1024;
 static TaskHandle_t cameraTaskHandle;
 static TaskHandle_t networkTaskHandle;
 static FactoryReset factoryReset(&settings, FACTORY_RESET_GPIO_NUM, LED_GPIO_NUM);
 static WiFiProvisioning provisioning(&settings);
+static WeightSensor weightSensor(HX711_DT_GPIO_NUM, HX711_SCK_GPIO_NUM, &settings);
 bool reinitCamera(framesize_t resolution, int quality);
 
 static bool frameSizeForResolutionSetting(uint8_t resolution, framesize_t& frameSize) {
@@ -81,11 +85,13 @@ static bool frameSizeForResolutionSetting(uint8_t resolution, framesize_t& frame
     }
 }
 
-static size_t captureJpeg(uint8_t* destination, size_t capacity) {
+static size_t captureJpeg(uint8_t* destination, size_t capacity, WeightReading& weight) {
     if (!destination || capacity == 0 || !frameMutex || !latestFrame) return 0;
     if (xSemaphoreTake(frameMutex, pdMS_TO_TICKS(1000)) != pdTRUE) return 0;
     const size_t length = latestFrameLength <= capacity ? latestFrameLength : 0;
     if (length > 0) memcpy(destination, latestFrame, length);
+    weight = latestFrameWeight;
+    if (weight.valid && millis() - weight.sampledAtMs > 1000UL) weight.valid = false;
     xSemaphoreGive(frameMutex);
     return length;
 }
@@ -137,6 +143,7 @@ static void cameraTask(void*) {
                     if (length > 0) {
                         memcpy(latestFrame, fb->buf, length);
                         latestFrameLength = length;
+                        latestFrameWeight = weightSensor.latest();
                     }
                     xSemaphoreGive(frameMutex);
                 }
@@ -363,6 +370,8 @@ void setup() {
     }
     settings.readFromNVS();
     settings.printSettings();
+    weightSensor.begin();
+    weightSensor.startTask();
     factoryReset.begin();
 
     if (!settings.checkWiFiConfigured()) {
@@ -438,6 +447,7 @@ void setup() {
         connectWiFi();
     });
     webServer.setFrameCaptureCallback(captureJpeg);
+    webServer.setWeightSensor(&weightSensor);
     webServer.setFrameRateCallback([]() { return settings.frameRate; });
     webServer.setCameraConfigCallback(applyCameraConfig);
     connectWiFi();

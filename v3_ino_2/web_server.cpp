@@ -40,6 +40,9 @@ void CameraWebServer::begin() {
     server_.on("/api/camera/config", HTTP_POST, [this](AsyncWebServerRequest* request) {
         handleCameraConfig(request);
     });
+    server_.on("/api/weight", HTTP_GET, [this](AsyncWebServerRequest* request) { handleGetWeight(request); });
+    server_.on("/api/weight/tare", HTTP_POST, [this](AsyncWebServerRequest* request) { handleTareWeight(request); });
+    server_.on("/api/weight/calibrate", HTTP_POST, [this](AsyncWebServerRequest* request) { handleCalibrateWeight(request); });
     server_.on("/stream", HTTP_GET, [this](AsyncWebServerRequest* request) {
         handleStream(request);
     });
@@ -75,9 +78,11 @@ void CameraWebServer::setReconnectCallback(std::function<void()> callback) {
     reconnectCallback_ = callback;
 }
 
-void CameraWebServer::setFrameCaptureCallback(std::function<size_t(uint8_t*, size_t)> callback) {
+void CameraWebServer::setFrameCaptureCallback(std::function<size_t(uint8_t*, size_t, WeightReading&)> callback) {
     frameCaptureCallback_ = callback;
 }
+
+void CameraWebServer::setWeightSensor(WeightSensor* sensor) { weightSensor_ = sensor; }
 
 void CameraWebServer::setFrameRateCallback(std::function<uint8_t()> callback) {
     frameRateCallback_ = callback;
@@ -422,6 +427,43 @@ void CameraWebServer::handleCameraConfig(AsyncWebServerRequest* request) {
     sendJson(request, 200, "Camera settings applied");
 }
 
+void CameraWebServer::handleGetWeight(AsyncWebServerRequest* request) {
+    if (!isAuthenticated(request)) { sendUnauthorized(request); return; }
+    if (!weightSensor_) { sendJson(request, 503, "Scale not responding"); return; }
+    const WeightReading reading = weightSensor_->latest();
+    StaticJsonDocument<256> document;
+    document["valid"] = reading.valid;
+    document["stable"] = reading.stable;
+    document["age_ms"] = reading.valid ? millis() - reading.sampledAtMs : 0;
+    document["offset"] = settings_->weightOffset;
+    document["scale"] = settings_->weightScale;
+    if (reading.valid) { document["grams"] = reading.grams; document["raw"] = reading.raw; }
+    String body; serializeJson(document, body); request->send(200, "application/json", body);
+}
+
+void CameraWebServer::handleTareWeight(AsyncWebServerRequest* request) {
+    if (!isAuthenticated(request)) { sendUnauthorized(request); return; }
+    if (!weightSensor_) { sendJson(request, 503, "Scale not responding"); return; }
+    int32_t offset;
+    if (!weightSensor_->tare(offset)) { sendJson(request, 503, "Scale not responding"); return; }
+    StaticJsonDocument<160> document; document["status"] = "success"; document["message"] = "Tare complete"; document["offset"] = offset;
+    String body; serializeJson(document, body); request->send(200, "application/json", body);
+}
+
+void CameraWebServer::handleCalibrateWeight(AsyncWebServerRequest* request) {
+    if (!isAdminAuthenticated(request)) {
+        if (isAuthenticated(request)) sendJson(request, 403, "Admin access required"); else sendUnauthorized(request);
+        return;
+    }
+    if (!weightSensor_ || !request->hasArg("known_grams")) { sendJson(request, 400, "Missing known mass"); return; }
+    const float known = request->arg("known_grams").toFloat();
+    if (!(known > 0.0f)) { sendJson(request, 400, "Known mass must be greater than zero"); return; }
+    float scale;
+    if (!weightSensor_->calibrate(known, scale)) { sendJson(request, 503, "Calibration failed"); return; }
+    StaticJsonDocument<160> document; document["status"] = "success"; document["message"] = "Calibration saved"; document["scale"] = scale;
+    String body; serializeJson(document, body); request->send(200, "application/json", body);
+}
+
 void CameraWebServer::handleCapture(AsyncWebServerRequest* request) {
     if (!isAuthenticated(request)) {
         sendUnauthorized(request);
@@ -440,7 +482,8 @@ void CameraWebServer::handleCapture(AsyncWebServerRequest* request) {
         sendJson(request, 503, "Insufficient memory for capture");
         return;
     }
-    const size_t length = frameCaptureCallback_(frame, capacity);
+    WeightReading reading;
+    const size_t length = frameCaptureCallback_(frame, capacity, reading);
     if (length == 0 || length > capacity) {
         free(frame);
         sendJson(request, 503, "Camera capture failed");
@@ -450,6 +493,13 @@ void CameraWebServer::handleCapture(AsyncWebServerRequest* request) {
     response->addHeader("Cache-Control", "no-store");
     response->addHeader("Content-Disposition", "inline; filename=capture.jpg");
     response->addHeader("Connection", "close");
+    response->addHeader("X-Weight-Valid", reading.valid ? "1" : "0");
+    if (reading.valid) {
+        response->addHeader("X-Weight-Grams", String(reading.grams, 2));
+        response->addHeader("X-Weight-Raw", String(reading.raw));
+        response->addHeader("X-Weight-Age-Ms", String(millis() - reading.sampledAtMs));
+        response->addHeader("X-Weight-Stable", reading.stable ? "1" : "0");
+    }
     request->onDisconnect([frame]() { free(frame); });
     request->send(response);
 }
@@ -475,7 +525,7 @@ void CameraWebServer::handleStream(AsyncWebServerRequest* request) {
         unsigned long nextFrameAt = 0;
     };
     StreamState* state = new StreamState();
-    const std::function<size_t(uint8_t*, size_t)> capture = frameCaptureCallback_;
+    const std::function<size_t(uint8_t*, size_t, WeightReading&)> capture = frameCaptureCallback_;
     const std::function<uint8_t()> fps = frameRateCallback_;
 
     AsyncWebServerResponse* response = request->beginChunkedResponse(
@@ -492,11 +542,19 @@ void CameraWebServer::handleStream(AsyncWebServerRequest* request) {
                 free(state->frame);
                 state->frame = static_cast<uint8_t*>(malloc(512 * 1024));
                 if (!state->frame) return 0;
-                state->frameLength = capture(state->frame, 512 * 1024);
+                WeightReading reading;
+                state->frameLength = capture(state->frame, 512 * 1024, reading);
                 if (state->frameLength == 0 || state->frameLength > 512 * 1024) return 0;
                 state->frameOffset = 0;
-                state->prefix = String("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ") +
-                                 String(state->frameLength) + "\r\n\r\n";
+                state->prefix = String("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ") + String(state->frameLength) + "\r\n";
+                state->prefix += String("X-Weight-Valid: ") + (reading.valid ? "1\r\n" : "0\r\n");
+                if (reading.valid) {
+                    state->prefix += String("X-Weight-Grams: ") + String(reading.grams, 2) + "\r\n";
+                    state->prefix += String("X-Weight-Raw: ") + String(reading.raw) + "\r\n";
+                    state->prefix += String("X-Weight-Age-Ms: ") + String(millis() - reading.sampledAtMs) + "\r\n";
+                    state->prefix += String("X-Weight-Stable: ") + (reading.stable ? "1\r\n" : "0\r\n");
+                }
+                state->prefix += "\r\n";
                 state->prefixOffset = 0;
                 state->suffixOffset = 0;
                 state->nextFrameAt = millis() + interval;
