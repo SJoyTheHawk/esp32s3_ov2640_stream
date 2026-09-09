@@ -20,6 +20,14 @@ videos2/
 # Python client runtime output
 python_clients/captures/
 python_clients/recordings/
+python_clients/motion_captures/
+python_clients/professional_viewer/captures/
+Windows Transfer Package/captures/*
+!Windows Transfer Package/captures/.gitkeep
+Windows Transfer Package/professional_viewer/__pycache__/
+Windows Transfer Package/professional_viewer/widgets/__pycache__/
+Windows Transfer Package/professional_viewer/workers/__pycache__/
+Windows Transfer Package/professional_viewer/utils/__pycache__/
 
 # Local backups and scratch copies
 *_bk.py

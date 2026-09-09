@@ -25,12 +25,9 @@ v3_ino_2/
   web_server.*          Async web server and authentication
   html_pages.h          Embedded login and main pages
 server.py               Optional Flask receiver, recorder, and control UI
-IMPLEMENTATION_PLAN.md  Phased implementation plan
-PHASE2_BENCHMARK.md     Web authentication test procedure
-PHASE3_BENCHMARK.md     Network settings and status test procedure
-PHASE5_BENCHMARK.md     Camera settings UI and API test procedure
 python_clients/         Optional Python MJPEG viewer and utility scripts
-PHASE7_BENCHMARK.md     Python client test procedure
+Windows Transfer Package/  Self-contained Windows viewer hand-off
+docs/                    Project plans, guides, and validation records
 ```
 
 Captured photos, recordings, backup copies, Python caches, and local build
@@ -89,8 +86,10 @@ available at `http://<server-ip>:8000/`.
 ## Validation
 
 - Phase 1 NVS persistence: use the guarded `NVS_TEST_WRITE` block in the sketch.
-- Phase 2 authentication: follow [PHASE2_BENCHMARK.md](PHASE2_BENCHMARK.md).
-- Phase 3 network settings: follow [PHASE3_BENCHMARK.md](PHASE3_BENCHMARK.md).
+- Phase 2 authentication: follow [PHASE2_BENCHMARK.md](docs/PHASE2_BENCHMARK.md).
+- Phase 3 network settings: follow [PHASE3_BENCHMARK.md](docs/PHASE3_BENCHMARK.md).
+- Phase 5 camera settings: follow [PHASE5_BENCHMARK.md](docs/PHASE5_BENCHMARK.md).
+- Phase 7 Python clients: follow [PHASE7_BENCHMARK.md](docs/PHASE7_BENCHMARK.md).
 - Later phases cover native MJPEG streaming, camera UI, and dual-core
   architecture.
 

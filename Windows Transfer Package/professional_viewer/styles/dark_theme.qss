@@ -1,0 +1,138 @@
+/* Dark theme for ESP32 Camera Viewer Pro */
+
+QMainWindow {
+    background-color: #0B0E14;
+    font-size: 16px;
+}
+
+QWidget {
+    background-color: #0B0E14;
+    color: #F8FAFC;
+    font-family: "Segoe UI", "Arial", sans-serif;
+    font-size: 16px;
+}
+
+/* Buttons */
+QPushButton {
+    background-color: #1E293B;
+    color: #F8FAFC;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+QPushButton:hover {
+    background-color: #334155;
+    border-color: #38BDF8;
+}
+
+QPushButton:pressed {
+    background-color: #475569;
+}
+
+QPushButton:disabled {
+    background-color: #1E293B;
+    color: #64748B;
+    border-color: #1E293B;
+}
+
+QPushButton:checked {
+    background-color: #DC2626;
+    border-color: #DC2626;
+}
+
+/* Input fields */
+QLineEdit, QSpinBox, QComboBox {
+    background-color: #0F172A;
+    color: #F8FAFC;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 15px;
+}
+
+QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
+    border-color: #38BDF8;
+}
+
+/* Group boxes */
+QGroupBox {
+    border: 1px solid #334155;
+    border-radius: 8px;
+    margin-top: 12px;
+    padding-top: 18px;
+    font-weight: 600;
+    font-size: 17px;
+    color: #38BDF8;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 5px;
+    font-size: 17px;
+}
+
+/* Labels */
+QLabel {
+    color: #CBD5E1;
+    background-color: transparent;
+    font-size: 15px;
+}
+
+/* Status bar */
+QStatusBar {
+    background-color: #1E293B;
+    color: #94A3B8;
+    border-top: 1px solid #334155;
+    font-size: 14px;
+}
+
+QStatusBar QLabel {
+    font-size: 14px;
+}
+
+/* Dialogs */
+QDialog {
+    background-color: #0B0E14;
+}
+
+/* ComboBox dropdown */
+QComboBox::drop-down {
+    border: none;
+}
+
+QComboBox::down-arrow {
+    image: none;
+    border: none;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #1E293B;
+    color: #F8FAFC;
+    selection-background-color: #334155;
+    border: 1px solid #334155;
+}
+
+/* Scrollbars */
+QScrollBar:vertical {
+    background: #0F172A;
+    width: 12px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:vertical {
+    background: #334155;
+    border-radius: 6px;
+    min-height: 20px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #475569;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
