@@ -1,5 +1,5 @@
 """
-ESP32-S3 摄像头视频流服务器
+The Pipe 摄像头视频流服务器
 
 功能：
   - 接收 ESP32 推送的 JPEG 帧
@@ -336,7 +336,7 @@ def index():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ESP32-S3 Camera Control</title>
+<title>The Pipe Camera</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -451,7 +451,7 @@ def index():
 <body>
 
 <header>
-  <h1>ESP32-S3 Camera</h1>
+  <h1>The Pipe Camera</h1>
   <span id="streamBadge" class="status-badge off">OFFLINE</span>
 </header>
 

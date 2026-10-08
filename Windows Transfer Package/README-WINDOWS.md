@@ -1,4 +1,4 @@
-# ESP32-S3 Camera Viewer for Windows
+# The Pipe Camera Viewer for Windows
 
 This folder is the Windows hand-off package for the professional MJPEG viewer.
 Transfer the complete folder to a Windows PC; do not copy individual files.
@@ -8,7 +8,7 @@ Transfer the complete folder to a Windows PC; do not copy individual files.
 1. Install Python 3.10+ and enable **Add Python to PATH**.
 2. Run `Install Dependencies.bat`.
 3. Run `Professional Viewer.bat`.
-4. Configure the ESP32 URL in Settings, for example:
+4. Configure the camera URL in Settings, for example:
    `http://192.168.2.100/stream`.
 
 The launcher starts from the package directory, so the bundled imports work

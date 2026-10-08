@@ -1,4 +1,4 @@
-# ESP32-S3 OV2640 Camera
+# The Pipe Camera
 
 Firmware and an optional Python companion server for an ESP32-S3 camera using
 an OV2640 sensor.

@@ -34,7 +34,7 @@
 
 // Increment this value when the firmware codebase changes. It is printed at
 // boot and shown in the web UI.
-#define FIRMWARE_VERSION "3.4.3"
+#define FIRMWARE_VERSION "3.4.4"
 
 // ==================== 摄像头引脚（按用户丝印图） ====================
 #define PWDN_GPIO_NUM     15   // PWON
@@ -367,7 +367,7 @@ void handleCommand(const String& resp) {
 void setup() {
     Serial0.begin(115200);
     Serial0.println("\n===========================");
-    Serial0.println(" ESP32-S3 Camera Streamer");
+    Serial0.println(" The Pipe Camera");
     Serial0.printf(" Firmware version: %s\n", FIRMWARE_VERSION);
     Serial0.println("===========================");
 
