@@ -52,7 +52,7 @@ public:
         static constexpr char PYTHON_SERVER_IP[32] = "192.168.1.183";
         static constexpr uint16_t PYTHON_SERVER_PORT = 8000;
 
-        static constexpr char DEVICE_NAME[32] = "ESP32-Camera";
+        static constexpr char DEVICE_NAME[32] = "The-Pipe-Camera";
         static constexpr char MDNS_HOSTNAME[32] = "camera";
     };
 

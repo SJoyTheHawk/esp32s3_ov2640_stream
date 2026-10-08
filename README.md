@@ -1,114 +1,100 @@
 # The Pipe Camera
 
-Firmware and an optional Python companion server for an ESP32-S3 camera using
-an OV2640 sensor.
+ESP32-S3 camera firmware with OV2640 sensor and optional Python companion server.
 
-## Current Features
+## Features
 
-- OV2640 JPEG capture at QVGA, VGA, SVGA, XGA, or UXGA
-- Configurable JPEG quality and frame rate
-- WiFi connection with DHCP or static network configuration
-- Optional HTTP POST frame streaming to the Python server
-- Preferences (NVS) backed camera, network, authentication, and server settings
-- Embedded web login with cookie sessions
-- Password change persisted to NVS
-- Authenticated network settings and device status APIs
-- Web-based DHCP/static-IP and WiFi configuration with automatic reconnect
-- Temporary NVS persistence test mode
+- JPEG capture at QVGA through UXGA with configurable quality and frame rate
+- WiFi with DHCP or static IP configuration
+- HTTP POST streaming to Python server
+- Embedded web UI with authentication and cookie sessions
+- WS2812B LED control (45-LED strip + onboard status pixel)
+- HX711 weight sensor integration with scale calibration
+- Persistent settings storage (NVS)
+- Web-based network and camera configuration
+- Internationalization support (i18n)
 
-## Project Layout
+## Quick Setup
 
-```text
-v3_ino_2/
-  v3_ino_2.ino          ESP32-S3 sketch and camera loop
-  camera_settings.*     Preferences/NVS settings layer
-  web_server.*          Async web server and authentication
-  html_pages.h          Embedded login and main pages
-server.py               Optional Flask receiver, recorder, and control UI
-python_clients/         Optional Python MJPEG viewer and utility scripts
-Windows Transfer Package/  Self-contained Windows viewer hand-off
-docs/                    Project plans, guides, and validation records
-```
+### Hardware Requirements
 
-Captured photos, recordings, backup copies, Python caches, and local build
-artifacts are intentionally excluded from Git by `.gitignore`.
+- ESP32-S3 with OV2640 camera module
+- PSRAM enabled in board configuration
+- Optional: 45 WS2812B LEDs (DIN on GPIO 21) + onboard status LED (GPIO 48)
+- Optional: HX711 weight sensor module
 
-## Hardware
+### Firmware Setup
 
-The sketch targets an ESP32-S3 with an OV2640 camera. The current pin mapping
-is defined near the top of `v3_ino_2/v3_ino_2.ino` and should be checked against
-the specific camera board before flashing.
+1. **Install Arduino libraries** (via Library Manager):
+   - ESPAsyncWebServer by ESP32Async
+   - AsyncTCP by ESP32Async
+   - ArduinoJson by Benoit Blanchon
+   - Adafruit NeoPixel by Adafruit Industries
 
-Enable PSRAM in the Arduino board configuration when the module provides it.
+2. **Flash firmware**:
+   - Open `v3_ino_2/v3_ino_2.ino` in Arduino IDE
+   - Select `ESP32-S3 Dev Module` board and USB port
+   - Enable PSRAM in Tools menu, use `OPI PSRAM`
+   - Upload sketch
+   - Monitor serial output at 115200 baud
 
-### WS2812B wiring
+3. **First boot - WiFi configuration**:
+   - Device will create a WiFi hotspot (check serial output for SSID)
+   - Connect to the hotspot from your phone or computer
+   - A captive portal page will appear automatically
+   - Enter your WiFi credentials and network settings
+   - Device will restart and connect to your network
 
-The initial firmware target uses 45 WS2812B LEDs with DIN on GPIO 21. Connect the
-LED ground to ESP32 ground. Add a 330–470 ohm resistor in series with DIN and a
-bulk capacitor near the strip. Use a suitable 5 V supply; the board-powered
-configuration is intentionally brightness-limited in firmware. Add a 3.3 V to
-5 V level shifter if the strip does not reliably recognize the ESP32 signal.
-Test with one LED before attaching the full strip, and verify the board's 5 V
-rail current capability before increasing the LED count.
+4. **Access web UI**:
+   - Find device IP in serial output after connection
+   - Open `http://<device-ip>` in browser
+   - Default login: `admin` / `admin`
+   - Change password and configure settings via web UI
 
-The onboard status WS2812B is a separate single pixel with its DIN on GPIO 48.
-It flashes green once for two seconds at startup and red five times when factory
-reset is triggered. Successful photo and configuration API calls flash green
-once for 500 ms; unmatched commands flash magenta once.
+### Python Server (Optional)
 
-## Arduino Dependencies
-
-Install these libraries through the Arduino IDE Library Manager:
-
-- ESPAsyncWebServer by ESP32Async
-- AsyncTCP by ESP32Async
-- ArduinoJson by Benoit Blanchon
-- Adafruit NeoPixel by Adafruit Industries
-
-The ESP32 board package supplies `WiFi`, `Preferences`, and `esp_camera`.
-
-## Firmware Setup
-
-1. Open `v3_ino_2/v3_ino_2.ino` in Arduino IDE.
-2. Select the ESP32-S3 board and the correct USB port.
-3. Configure initial WiFi values in `camera_settings.h` before the first flash.
-   After login, further WiFi and IP changes can be made from the web UI.
-4. Flash the sketch and open Serial Monitor at `115200`.
-5. Confirm the log reports WiFi connection and `[WEB] Server started on port 80`.
-
-The default web login is `admin` / `admin` unless the NVS password was changed.
-
-Do not commit real WiFi passwords, credentials, or public upload endpoints.
-The current development sketch contains local values and must be redacted or
-moved to an ignored local configuration header before publishing this project.
-
-## Python Server
-
-Install dependencies:
+For frame recording and remote viewing:
 
 ```bash
-python3 -m pip install -r requirements.txt
-```
-
-Start the receiver on the local network:
-
-```bash
+pip install -r requirements.txt
 python3 server.py --host 0.0.0.0 --port 8000
 ```
 
-The ESP32 must point to the computer's LAN IP, not `localhost`. The web UI is
-available at `http://<server-ip>:8000/`.
+Point ESP32 to `http://<server-lan-ip>:8000` (not localhost). Access web UI at same address.
 
-## Validation
+## Project Structure
 
-- Phase 1 NVS persistence: use the guarded `NVS_TEST_WRITE` block in the sketch.
-- Phase 2 authentication: follow [PHASE2_BENCHMARK.md](docs/PHASE2_BENCHMARK.md).
-- Phase 3 network settings: follow [PHASE3_BENCHMARK.md](docs/PHASE3_BENCHMARK.md).
-- Phase 5 camera settings: follow [PHASE5_BENCHMARK.md](docs/PHASE5_BENCHMARK.md).
-- Phase 7 Python clients: follow [PHASE7_BENCHMARK.md](docs/PHASE7_BENCHMARK.md).
-- Later phases cover native MJPEG streaming, camera UI, and dual-core
-  architecture.
+```text
+v3_ino_2/
+  v3_ino_2.ino          Main ESP32-S3 sketch
+  camera_settings.*     NVS settings management
+  web_server.*          Web server and authentication
+  html_pages.h          Embedded web UI
+server.py               Flask receiver and control server
+python_clients/         MJPEG viewer and utilities
+Windows Transfer Package/  Standalone Windows viewer
+docs/                   Documentation and guides
+```
+
+## Hardware Details
+
+### Camera Pin Mapping
+
+Verify pin configuration in `v3_ino_2/v3_ino_2.ino` matches your camera board before flashing.
+
+### WS2812B LED Strip
+
+- 45 LEDs with DIN on GPIO 21
+- Add 330–470Ω resistor in series with DIN
+- Use external 5V power supply for full strip
+- Brightness limited when powered from board
+- Consider 3.3V→5V level shifter for signal reliability
+
+Status LED (GPIO 48):
+- Green flash: startup, successful photo/config
+- Red flash (5×): factory reset triggered
+- Magenta flash: unrecognized command
 
 ## License
 
-No license has been selected yet.
+No license selected.

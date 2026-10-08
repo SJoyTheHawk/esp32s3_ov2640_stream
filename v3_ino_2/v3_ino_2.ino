@@ -1,6 +1,6 @@
 /*
- * ESP32-S3 + OV2640 视频流推送到 Python 服务器
- * 
+ * The Pipe Camera - OV2640 视频流推送到 Python 服务器
+ *
  * 功能：
  *   - 连接 WiFi
  *   - 初始化 OV2640 摄像头 (800x600 JPEG)
@@ -9,7 +9,7 @@
  *
  * 使用方法：
  *   1. 通过 CameraSettings/NVS 配置 WiFi 和 Python 服务器参数
- *   2. Arduino IDE 中选择 ESP32S3 开发板，启用 PSRAM (Octal)
+ *   2. Arduino IDE 中选择 ESP32-S3 开发板，启用 PSRAM (Octal)
  *   3. 上传本 sketch
  *
  * 引脚定义根据用户提供的丝印图修改
@@ -34,7 +34,7 @@
 
 // Increment this value when the firmware codebase changes. It is printed at
 // boot and shown in the web UI.
-#define FIRMWARE_VERSION "3.4.4"
+#define FIRMWARE_VERSION "3.4.5"
 
 // ==================== 摄像头引脚（按用户丝印图） ====================
 #define PWDN_GPIO_NUM     15   // PWON
