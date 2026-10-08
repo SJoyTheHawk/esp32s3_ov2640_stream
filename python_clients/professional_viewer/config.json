@@ -1,6 +1,6 @@
 {
   "stream": {
-    "url": "http://192.168.2.44/stream",
+    "url": "http://192.168.1.182/stream",
     "username": "admin",
     "password": "admin",
     "auto_reconnect": true,

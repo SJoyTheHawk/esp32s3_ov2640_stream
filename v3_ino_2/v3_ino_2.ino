@@ -21,6 +21,7 @@
 #include "web_server.h"
 #include "factory_reset.h"
 #include "wifi_provisioning.h"
+#include "ws2812b_controller.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -33,7 +34,7 @@
 
 // Increment this value when the firmware codebase changes. It is printed at
 // boot and shown in the web UI.
-#define FIRMWARE_VERSION "3.2.0"
+#define FIRMWARE_VERSION "3.4.3"
 
 // ==================== 摄像头引脚（按用户丝印图） ====================
 #define PWDN_GPIO_NUM     15   // PWON
@@ -54,7 +55,7 @@
 #define PCLK_GPIO_NUM      5   // DCLK
 
 // ==================== LED 反馈引脚 ====================
-#define LED_GPIO_NUM       48  // 板载 LED（根据模块调整）
+#define LED_GPIO_NUM       48  // 板载 WS2812B DIN（根据模块调整）
 #define FACTORY_RESET_GPIO_NUM 19
 #define HX711_DT_GPIO_NUM      17
 #define HX711_SCK_GPIO_NUM     18
@@ -73,9 +74,11 @@ static WeightReading latestFrameWeight;
 static const size_t FRAME_BUFFER_CAPACITY = 512 * 1024;
 static TaskHandle_t cameraTaskHandle;
 static TaskHandle_t networkTaskHandle;
-static FactoryReset factoryReset(&settings, FACTORY_RESET_GPIO_NUM, LED_GPIO_NUM);
 static WiFiProvisioning provisioning(&settings);
 static WeightSensor weightSensor(HX711_DT_GPIO_NUM, HX711_SCK_GPIO_NUM, &settings);
+static Ws2812bController ledController;
+static Ws2812bController indicatorController;
+static FactoryReset factoryReset(&settings, FACTORY_RESET_GPIO_NUM, &indicatorController);
 bool reinitCamera(framesize_t resolution, int quality);
 
 static bool frameSizeForResolutionSetting(uint8_t resolution, framesize_t& frameSize) {
@@ -256,14 +259,9 @@ bool reinitCamera(framesize_t resolution, int quality) {
 }
 
 // ==================== LED 闪烁反馈 ====================
-void flashLED(int times = 2, int delayMs = 100) {
-    pinMode(LED_GPIO_NUM, OUTPUT);
-    for (int i = 0; i < times; i++) {
-        digitalWrite(LED_GPIO_NUM, HIGH);
-        delay(delayMs);
-        digitalWrite(LED_GPIO_NUM, LOW);
-        delay(delayMs);
-    }
+void flashLED(uint8_t times, unsigned long delayMs,
+              uint8_t red, uint8_t green, uint8_t blue) {
+    indicatorController.flash(times, delayMs, red, green, blue);
 }
 
 // ==================== WiFi 连接 ====================
@@ -308,14 +306,20 @@ void connectWiFi() {
 void handleCommand(const String& resp) {
     // 简单的 JSON 解析，查找 "cmd" 字段
     int cmdIdx = resp.indexOf("\"cmd\"");
-    if (cmdIdx < 0) return;
-    
+    if (cmdIdx < 0) {
+        flashLED(1, 500, 255, 0, 255);
+        return;
+    }
+
+    bool matched = false;
     // 解析命令类型
     if (resp.indexOf("\"photo\"") >= 0) {
+        matched = true;
         Serial0.println("[CMD] photo -> LED flash");
-        flashLED(3, 80);
+        flashLED(1, 500, 0, 255, 0);
     }
     else if (resp.indexOf("\"set_resolution\"") >= 0) {
+        matched = true;
         // 解析分辨率值
         int valIdx = resp.indexOf("\"value\"");
         if (valIdx >= 0) {
@@ -346,14 +350,17 @@ void handleCommand(const String& resp) {
             Serial0.printf("[CMD] set_resolution: setting=%u, frame_size=%d, quality=%d\n",
                            newResolution, newFrameSize, newQuality);
             if (reinitCamera(newFrameSize, newQuality)) {
-                settings.writeCameraResolution(newResolution);
-                settings.writeCameraQuality(static_cast<uint8_t>(newQuality));
+                const bool saved = settings.writeCameraResolution(newResolution) &&
+                                   settings.writeCameraQuality(static_cast<uint8_t>(newQuality));
+                if (saved) flashLED(1, 500, 0, 255, 0);
             }
         }
     }
     else if (resp.indexOf("\"get_status\"") >= 0) {
+        matched = true;
         Serial0.printf("[CMD] get_status: res=%d, quality=%d\n", currentResolution, currentQuality);
     }
+    if (!matched) flashLED(1, 500, 255, 0, 255);
 }
 
 // ==================== setup ====================
@@ -364,10 +371,6 @@ void setup() {
     Serial0.printf(" Firmware version: %s\n", FIRMWARE_VERSION);
     Serial0.println("===========================");
 
-    // 初始化 LED
-    pinMode(LED_GPIO_NUM, OUTPUT);
-    digitalWrite(LED_GPIO_NUM, LOW);
-
     if (!settings.isNVSInitialized()) {
         Serial0.println("[SETTINGS] First boot - initializing NVS");
         if (!settings.initializeNVS()) {
@@ -376,6 +379,14 @@ void setup() {
     }
     settings.readFromNVS();
     settings.printSettings();
+    if (!ledController.begin(settings.ledCount, settings.ledDataPin, settings.ledEnabled,
+                             settings.ledRed, settings.ledGreen, settings.ledBlue,
+                             settings.ledBrightnessPercent)) {
+        Serial0.println("[LED] WS2812B initialization failed");
+    }
+    if (!indicatorController.begin(1, LED_GPIO_NUM, false, 0, 0, 0, 0)) {
+        Serial0.println("[LED] Onboard WS2812B indicator initialization failed");
+    }
     weightSensor.begin();
     if (settings.scaleEnabled) weightSensor.startTask();
     factoryReset.begin();
@@ -455,6 +466,8 @@ void setup() {
     webServer.setFirmwareVersion(FIRMWARE_VERSION);
     webServer.setFrameCaptureCallback(captureJpeg);
     webServer.setWeightSensor(&weightSensor);
+    webServer.setLedController(&ledController);
+    webServer.setIndicatorController(&indicatorController);
     webServer.setScaleEnabledCallback([](bool enabled) {
         weightSensor.setEnabled(enabled);
     });
@@ -471,7 +484,7 @@ void setup() {
                             &networkTaskHandle, 1);
 
     // 启动时闪烁 LED 表示就绪
-    flashLED(1, 200);
+    flashLED(1, 2000, 0, 255, 0);
     
     Serial0.println("[SYS] Starting stream loop...");
 }

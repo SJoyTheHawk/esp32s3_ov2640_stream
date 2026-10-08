@@ -2,10 +2,12 @@
 #define WEB_SERVER_H
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
 #include <functional>
 #include "camera_settings.h"
 #include "weight_sensor.h"
+#include "ws2812b_controller.h"
 
 class CameraWebServer {
 public:
@@ -22,6 +24,8 @@ public:
     void setScaleEnabledCallback(std::function<void(bool)> callback);
     void setFrameRateCallback(std::function<uint8_t()> callback);
     void setCameraConfigCallback(std::function<bool(uint8_t, uint8_t, int8_t, int8_t, int8_t, bool, bool)> callback);
+    void setLedController(Ws2812bController* controller);
+    void setIndicatorController(Ws2812bController* controller);
 
 private:
     static const unsigned long COOKIE_TIMEOUT_MS = 1800000UL;
@@ -40,6 +44,9 @@ private:
     std::function<void(bool)> scaleEnabledCallback_;
     std::function<uint8_t()> frameRateCallback_;
     std::function<bool(uint8_t, uint8_t, int8_t, int8_t, int8_t, bool, bool)> cameraConfigCallback_;
+    Ws2812bController* ledController_ = nullptr;
+    Ws2812bController* indicatorController_ = nullptr;
+    SemaphoreHandle_t ledApiMutex_ = nullptr;
 
     String generateToken();
     AuthLevel getAuthLevel(AsyncWebServerRequest* request);
@@ -61,6 +68,12 @@ private:
     void handleGetWeight(AsyncWebServerRequest* request);
     void handleTareWeight(AsyncWebServerRequest* request);
     void handleCalibrateWeight(AsyncWebServerRequest* request);
+    void appendLedState(JsonObject object);
+    void handleGetLed(AsyncWebServerRequest* request);
+    void handleLedControl(AsyncWebServerRequest* request);
+    void handleLedHardware(AsyncWebServerRequest* request);
+    void indicateSuccess();
+    void indicateUnmatched();
     bool parseIPAddress(const String& value, byte destination[4]);
 };
 

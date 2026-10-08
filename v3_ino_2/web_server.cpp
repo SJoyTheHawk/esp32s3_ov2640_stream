@@ -5,6 +5,21 @@
 #include <cstdlib>
 #include "html_pages.h"
 
+namespace {
+// Hold across output + persistence, including rollback, so concurrent saves
+// cannot interleave. The controller separately protects its pixel buffer.
+class LedRequestLock {
+public:
+    explicit LedRequestLock(SemaphoreHandle_t mutex) : mutex_(mutex),
+        locked_(mutex && xSemaphoreTake(mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {}
+    ~LedRequestLock() { if (locked_) xSemaphoreGive(mutex_); }
+    explicit operator bool() const { return locked_; }
+private:
+    SemaphoreHandle_t mutex_;
+    bool locked_;
+};
+}
+
 CameraWebServer::CameraWebServer(uint16_t port, CameraSettings* settings)
     : server_(port), settings_(settings), adminLastActivityMs_(0),
       userLastActivityMs_(0), reconnectAtMs_(0) {
@@ -13,9 +28,14 @@ CameraWebServer::CameraWebServer(uint16_t port, CameraSettings* settings)
 
 CameraWebServer::~CameraWebServer() {
     server_.end();
+    if (ledApiMutex_) vSemaphoreDelete(ledApiMutex_);
 }
 
 void CameraWebServer::begin() {
+    ledApiMutex_ = xSemaphoreCreateMutex();
+    server_.on("/api/led", HTTP_GET, [this](AsyncWebServerRequest* r) { handleGetLed(r); });
+    server_.on("/api/led/control", HTTP_POST, [this](AsyncWebServerRequest* r) { handleLedControl(r); });
+    server_.on("/api/led/hardware", HTTP_POST, [this](AsyncWebServerRequest* r) { handleLedHardware(r); });
     server_.on("/", HTTP_GET, [this](AsyncWebServerRequest* request) {
         handleRoot(request);
     });
@@ -52,7 +72,8 @@ void CameraWebServer::begin() {
     server_.on("/capture", HTTP_GET, [this](AsyncWebServerRequest* request) {
         handleCapture(request);
     });
-    server_.onNotFound([](AsyncWebServerRequest* request) {
+    server_.onNotFound([this](AsyncWebServerRequest* request) {
+        indicateUnmatched();
         request->send(404, "text/plain", "404 Not Found");
     });
     server_.begin();
@@ -87,6 +108,20 @@ void CameraWebServer::setReconnectCallback(std::function<void()> callback) {
 
 void CameraWebServer::setFrameCaptureCallback(std::function<size_t(uint8_t*, size_t, WeightReading&)> callback) {
     frameCaptureCallback_ = callback;
+}
+
+void CameraWebServer::setLedController(Ws2812bController* controller) { ledController_ = controller; }
+
+void CameraWebServer::setIndicatorController(Ws2812bController* controller) {
+    indicatorController_ = controller;
+}
+
+void CameraWebServer::indicateSuccess() {
+    if (indicatorController_) indicatorController_->flash(1, 500, 0, 255, 0);
+}
+
+void CameraWebServer::indicateUnmatched() {
+    if (indicatorController_) indicatorController_->flash(1, 500, 255, 0, 255);
 }
 
 void CameraWebServer::setWeightSensor(WeightSensor* sensor) { weightSensor_ = sensor; }
@@ -173,7 +208,13 @@ void CameraWebServer::handleLogin(AsyncWebServerRequest* request) {
         return;
     }
 
-    const String token = generateToken();
+    // Streaming, desktop settings and browser controls share a role session.
+    // A second login with valid credentials must not invalidate the first client.
+    const unsigned long now = millis();
+    const String existing = level == AuthLevel::ADMIN ? adminAuthToken_ : userAuthToken_;
+    const unsigned long lastActivity = level == AuthLevel::ADMIN ? adminLastActivityMs_ : userLastActivityMs_;
+    const String token = existing.length() && now - lastActivity < COOKIE_TIMEOUT_MS
+        ? existing : generateToken();
     if (level == AuthLevel::ADMIN) { adminAuthToken_ = token; adminLastActivityMs_ = millis(); }
     else { userAuthToken_ = token; userLastActivityMs_ = millis(); }
     StaticJsonDocument<256> document;
@@ -237,6 +278,7 @@ void CameraWebServer::handleChangePassword(AsyncWebServerRequest* request) {
         return;
     }
     sendJson(request, 200, "Password changed successfully");
+    indicateSuccess();
     Serial.println("[WEB] Password changed");
 }
 
@@ -254,7 +296,7 @@ void CameraWebServer::handleGetSettings(AsyncWebServerRequest* request) {
         return;
     }
 
-    StaticJsonDocument<512> document;
+    StaticJsonDocument<2048> document;
     document["wifi_ssid"] = settings_->wifiSSID;
     document["wifi_password_set"] = settings_->wifiPassword[0] != '\0';
     document["use_dhcp"] = settings_->useDHCP;
@@ -272,6 +314,7 @@ void CameraWebServer::handleGetSettings(AsyncWebServerRequest* request) {
     document["vertical_flip"] = settings_->verticalFlip;
     document["horizontal_mirror"] = settings_->horizontalMirror;
     document["scale_enabled"] = settings_->scaleEnabled;
+    appendLedState(document.createNestedObject("led"));
 
     String body;
     serializeJson(document, body);
@@ -354,6 +397,7 @@ void CameraWebServer::handlePostSettings(AsyncWebServerRequest* request) {
     String body;
     serializeJson(document, body);
     request->send(200, "application/json", body);
+    indicateSuccess();
 
     if (reconnectCallback_) reconnectAtMs_ = millis() + 1500UL;
     Serial.printf("[WEB] Network settings saved (SSID: %s, DHCP: %s)\n",
@@ -382,7 +426,121 @@ void CameraWebServer::handleScaleEnabled(AsyncWebServerRequest* request) {
     }
     if (scaleEnabledCallback_) scaleEnabledCallback_(enabled);
     sendJson(request, 200, enabled ? "Scale enabled" : "Scale disabled");
+    indicateSuccess();
     Serial0.printf("[SCALE] %s\n", enabled ? "enabled" : "disabled");
+}
+
+void CameraWebServer::appendLedState(JsonObject object) {
+    LedRequestLock lock(ledApiMutex_);
+    if (!lock || !ledController_) {
+        object["available"] = false;
+        return;
+    }
+    const Ws2812bController::State state = ledController_->state();
+    object["available"] = state.initialized;
+    object["enabled"] = state.enabled;
+    object["red"] = state.red;
+    object["green"] = state.green;
+    object["blue"] = state.blue;
+    object["brightness"] = state.brightnessPercent;
+    object["effective_brightness"] = state.effectiveBrightnessPercent;
+    object["led_count"] = state.count;
+    object["data_gpio"] = state.dataPin;
+    object["power_budget_ma"] = Ws2812bController::POWER_BUDGET_MA;
+    object["current_limited"] = state.enabled && state.effectiveBrightnessPercent < state.brightnessPercent;
+    object["idle_reserve_ma"] = Ws2812bController::MAX_LEDS;
+    object["estimated_full_white_ma"] = static_cast<uint32_t>(state.count) * Ws2812bController::CURRENT_PER_LED_MA;
+}
+
+void CameraWebServer::handleGetLed(AsyncWebServerRequest* request) {
+    if (!isAuthenticated(request)) { sendUnauthorized(request); return; }
+    if (!ledController_) { sendJson(request, 503, "LED controller unavailable"); return; }
+    StaticJsonDocument<1024> document;
+    appendLedState(document.to<JsonObject>());
+    String body; serializeJson(document, body);
+    request->send(document["available"].as<bool>() ? 200 : 503, "application/json", body);
+}
+
+static bool parseLedNumber(AsyncWebServerRequest* request, const char* name,
+                           int minimum, int maximum, int& output) {
+    if (!request->hasArg(name)) return false;
+    const String value = request->arg(name);
+    if (value.length() == 0 || value.length() > 3) return false;
+    for (size_t i = 0; i < value.length(); ++i) {
+        if (value[i] < '0' || value[i] > '9') return false;
+    }
+    output = value.toInt();
+    return output >= minimum && output <= maximum;
+}
+
+static bool parseLedEnabled(AsyncWebServerRequest* request, bool& output) {
+    if (!request->hasArg("enabled")) return false;
+    const String value = request->arg("enabled");
+    if (value == "true" || value == "1") { output = true; return true; }
+    if (value == "false" || value == "0") { output = false; return true; }
+    return false;
+}
+
+void CameraWebServer::handleLedControl(AsyncWebServerRequest* request) {
+    if (!isAuthenticated(request)) { sendUnauthorized(request); return; }
+    if (!ledController_) { sendJson(request, 503, "LED controller unavailable"); return; }
+    bool enabled;
+    int red, green, blue, brightness;
+    if (!parseLedEnabled(request, enabled) ||
+        !parseLedNumber(request, "red", 0, 255, red) ||
+        !parseLedNumber(request, "green", 0, 255, green) ||
+        !parseLedNumber(request, "blue", 0, 255, blue) ||
+        !parseLedNumber(request, "brightness", 0, 100, brightness)) {
+        sendJson(request, 400, "Invalid LED control values");
+        return;
+    }
+    LedRequestLock lock(ledApiMutex_);
+    if (!lock) { sendJson(request, 503, "LED controller busy"); return; }
+    const Ws2812bController::State old = ledController_->state();
+    if (!ledController_->apply(enabled, static_cast<uint8_t>(red), static_cast<uint8_t>(green),
+                               static_cast<uint8_t>(blue), static_cast<uint8_t>(brightness))) {
+        sendJson(request, 503, "Failed to apply LED settings");
+        return;
+    }
+    if (!settings_->writeLedSettings(enabled, static_cast<uint8_t>(red), static_cast<uint8_t>(green),
+                                     static_cast<uint8_t>(blue), static_cast<uint8_t>(brightness))) {
+        ledController_->apply(old.enabled, old.red, old.green, old.blue, old.brightnessPercent);
+        sendJson(request, 500, "LED save failed; previous output restored");
+        return;
+    }
+    sendJson(request, 200, "LED settings applied");
+    indicateSuccess();
+}
+
+void CameraWebServer::handleLedHardware(AsyncWebServerRequest* request) {
+    if (!isAdminAuthenticated(request)) {
+        if (isAuthenticated(request)) sendJson(request, 403, "Admin access required");
+        else sendUnauthorized(request);
+        return;
+    }
+    if (!ledController_) { sendJson(request, 503, "LED controller unavailable"); return; }
+    int count, pin;
+    if (!parseLedNumber(request, "led_count", 1, Ws2812bController::MAX_LEDS, count) ||
+        !parseLedNumber(request, "data_gpio", 0, 255, pin) ||
+        !Ws2812bController::isValidDataPin(static_cast<uint8_t>(pin))) {
+        sendJson(request, 400, "Invalid LED hardware settings");
+        return;
+    }
+    LedRequestLock lock(ledApiMutex_);
+    if (!lock) { sendJson(request, 503, "LED controller busy"); return; }
+    const Ws2812bController::State old = ledController_->state();
+    if (!ledController_->reinitialize(static_cast<uint16_t>(count), static_cast<uint8_t>(pin))) {
+        sendJson(request, 503, "Failed to reinitialize LED strip");
+        return;
+    }
+    if (!settings_->writeLedHardware(static_cast<uint16_t>(count), static_cast<uint8_t>(pin))) {
+        ledController_->reinitialize(old.count, old.dataPin);
+        ledController_->apply(old.enabled, old.red, old.green, old.blue, old.brightnessPercent);
+        sendJson(request, 500, "LED hardware save failed; previous configuration restored");
+        return;
+    }
+    sendJson(request, 200, "LED hardware applied");
+    indicateSuccess();
 }
 
 void CameraWebServer::handleGetStatus(AsyncWebServerRequest* request) {
@@ -392,7 +550,7 @@ void CameraWebServer::handleGetStatus(AsyncWebServerRequest* request) {
     }
 
     const bool connected = WiFi.status() == WL_CONNECTED;
-    StaticJsonDocument<384> document;
+    StaticJsonDocument<2048> document;
     document["uptime_seconds"] = millis() / 1000UL;
     document["wifi_connected"] = connected;
     document["ip_address"] = connected ? WiFi.localIP().toString() : "";
@@ -410,6 +568,7 @@ void CameraWebServer::handleGetStatus(AsyncWebServerRequest* request) {
     document["vertical_flip"] = settings_->verticalFlip;
     document["horizontal_mirror"] = settings_->horizontalMirror;
     document["scale_enabled"] = settings_->scaleEnabled;
+    appendLedState(document.createNestedObject("led"));
     String body;
     serializeJson(document, body);
     request->send(200, "application/json", body);
@@ -464,6 +623,7 @@ void CameraWebServer::handleCameraConfig(AsyncWebServerRequest* request) {
         return;
     }
     sendJson(request, 200, "Camera settings applied");
+    indicateSuccess();
 }
 
 void CameraWebServer::handleGetWeight(AsyncWebServerRequest* request) {
@@ -487,6 +647,7 @@ void CameraWebServer::handleTareWeight(AsyncWebServerRequest* request) {
     if (!weightSensor_->tare(offset)) { sendJson(request, 503, "Scale not responding"); return; }
     StaticJsonDocument<160> document; document["status"] = "success"; document["message"] = "Tare complete"; document["offset"] = offset;
     String body; serializeJson(document, body); request->send(200, "application/json", body);
+    indicateSuccess();
 }
 
 void CameraWebServer::handleCalibrateWeight(AsyncWebServerRequest* request) {
@@ -502,6 +663,7 @@ void CameraWebServer::handleCalibrateWeight(AsyncWebServerRequest* request) {
     if (!weightSensor_->calibrate(known, scale)) { sendJson(request, 503, "Calibration failed"); return; }
     StaticJsonDocument<160> document; document["status"] = "success"; document["message"] = "Calibration saved"; document["scale"] = scale;
     String body; serializeJson(document, body); request->send(200, "application/json", body);
+    indicateSuccess();
 }
 
 void CameraWebServer::handleCapture(AsyncWebServerRequest* request) {
@@ -542,6 +704,7 @@ void CameraWebServer::handleCapture(AsyncWebServerRequest* request) {
     }
     request->onDisconnect([frame]() { free(frame); });
     request->send(response);
+    indicateSuccess();
 }
 
 void CameraWebServer::handleStream(AsyncWebServerRequest* request) {

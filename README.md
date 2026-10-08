@@ -41,6 +41,21 @@ the specific camera board before flashing.
 
 Enable PSRAM in the Arduino board configuration when the module provides it.
 
+### WS2812B wiring
+
+The initial firmware target uses 45 WS2812B LEDs with DIN on GPIO 21. Connect the
+LED ground to ESP32 ground. Add a 330–470 ohm resistor in series with DIN and a
+bulk capacitor near the strip. Use a suitable 5 V supply; the board-powered
+configuration is intentionally brightness-limited in firmware. Add a 3.3 V to
+5 V level shifter if the strip does not reliably recognize the ESP32 signal.
+Test with one LED before attaching the full strip, and verify the board's 5 V
+rail current capability before increasing the LED count.
+
+The onboard status WS2812B is a separate single pixel with its DIN on GPIO 48.
+It flashes green once for two seconds at startup and red five times when factory
+reset is triggered. Successful photo and configuration API calls flash green
+once for 500 ms; unmatched commands flash magenta once.
+
 ## Arduino Dependencies
 
 Install these libraries through the Arduino IDE Library Manager:
@@ -48,6 +63,7 @@ Install these libraries through the Arduino IDE Library Manager:
 - ESPAsyncWebServer by ESP32Async
 - AsyncTCP by ESP32Async
 - ArduinoJson by Benoit Blanchon
+- Adafruit NeoPixel by Adafruit Industries
 
 The ESP32 board package supplies `WiFi`, `Preferences`, and `esp_camera`.
 

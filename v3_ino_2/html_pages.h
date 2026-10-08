@@ -53,6 +53,7 @@ section{padding:16px;background:#1a1f26;border:1px solid #2d3748;border-radius:8
 <label class="check"><input id="vertical-flip" name="vertical_flip" type="checkbox">Vertical flip</label><label class="check"><input id="horizontal-mirror" name="horizontal_mirror" type="checkbox">Horizontal mirror</label>
 </div><div class="actions"><button type="submit" class="btn-primary btn-block">Apply camera</button><p id="camera-message" class="message"></p></div></form></section>
 <section><h2 style="display:flex;align-items:center">Scale <span class="pill pill-wait" id="w-pill">Waiting</span></h2><div class="weight-hero"><b id="w-grams">--</b><i>g</i></div><div class="actions"><button type="button" class="btn-primary" id="w-tare">Tare (zero)</button><button type="button" class="quiet admin-only" id="w-cal-open">Calibrate</button><p id="w-message" class="message"></p></div><div class="weight-raw"><span>Raw <b id="w-raw">-</b></span><span>Age <b id="w-age">-</b></span><span>Offset <b id="w-offset">-</b></span><span>Scale <b id="w-scale">-</b></span></div></section>
+<section><h2>LED light</h2><div class="setting-link"><p class="muted" id="led-summary">Choose one color for every LED</p><button type="button" class="btn-primary" id="led-open">Configure LED</button></div></section>
 <section class="admin-only"><h2>Device Settings</h2><div class="setting-link"><div><strong>WiFi configuration</strong><p class="muted" id="wifi-summary">Manage SSID and network address</p></div><button type="button" class="quiet" id="wifi-open">Configure</button></div><div class="setting-link"><div><strong>Account password</strong><p class="muted">Update the password for this account</p></div><button type="button" class="quiet" id="password-open">Change</button></div><label class="check setting-link"><span><strong>Enable Scale</strong><p class="muted" id="scale-message">Connect the HX711 and include weight data</p></span><input id="scale-enabled" type="checkbox"></label></section>
 <div id="wifi-modal" class="modal" aria-hidden="true"><div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="wifi-title"><div class="modal-header"><h2 id="wifi-title">WiFi settings</h2><button type="button" class="close-btn" data-close="wifi-modal" aria-label="Close">&times;</button></div><form id="network-form"><div class="grid">
 <div class="full"><label for="ssid">WiFi SSID</label><input id="ssid" name="wifi_ssid" maxlength="31" required></div>
@@ -66,12 +67,31 @@ section{padding:16px;background:#1a1f26;border:1px solid #2d3748;border-radius:8
 <label for="new">New password</label><input id="new" name="new_password" type="password" minlength="4" maxlength="31" required>
 <label for="confirm">Confirm new password</label><input id="confirm" name="confirm_password" type="password" minlength="4" maxlength="31" required>
 <div class="actions"><button type="button" class="quiet" data-close="password-modal">Cancel</button><button type="submit" class="btn-primary">Save password</button></div><div id="message" class="message"></div></form></div></div>
+<div id="led-modal" class="modal" aria-hidden="true"><div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="led-title">
+<div class="modal-header"><h2 id="led-title">LED light</h2><button type="button" class="close-btn" data-close="led-modal" aria-label="Close">&times;</button></div>
+<p class="muted">Changes apply when you save. All LEDs use the same color.</p>
+<form id="led-form"><fieldset id="led-controls" disabled style="border:0;padding:0">
+<label class="check"><input id="led-enabled" type="checkbox">Enable LED light</label>
+<label for="led-red">Red</label><div class="range"><input id="led-red" name="red" type="range" min="0" max="255" step="1"><output id="led-red-value"></output></div>
+<label for="led-green">Green</label><div class="range"><input id="led-green" name="green" type="range" min="0" max="255" step="1"><output id="led-green-value"></output></div>
+<label for="led-blue">Blue</label><div class="range"><input id="led-blue" name="blue" type="range" min="0" max="255" step="1"><output id="led-blue-value"></output></div>
+<label for="led-brightness">Brightness (%)</label><div class="range"><input id="led-brightness" name="brightness" type="range" min="0" max="100" step="1"><output id="led-brightness-value"></output></div>
+<div class="actions"><button type="submit" class="btn-primary">Save light</button></div></fieldset></form>
+<p id="led-limit" class="muted"></p>
+<form id="led-hardware-form" class="admin-only hidden"><fieldset id="led-hardware-controls" disabled style="border:0;padding:0">
+<label for="led-count">LED count (1–45)</label><input id="led-count" name="led_count" type="number" min="1" max="45" step="1" required>
+<label for="led-pin">Data GPIO</label><select id="led-pin" name="data_gpio"><option value="21">GPIO 21</option></select>
+<p class="muted">Only GPIO 21 is approved for this board. Hardware changes apply immediately when saved.</p>
+<div class="actions"><button type="submit" class="quiet">Save hardware</button></div></fieldset></form>
+<p id="led-message" class="message" role="status"></p>
+<div class="actions"><button type="button" class="quiet" id="led-reload">Reload</button><button type="button" class="quiet" data-close="led-modal">Cancel / Close</button></div>
+</div></div>
 <div id="cal-modal" class="modal" aria-hidden="true"><div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="cal-title"><div class="modal-header"><h2 id="cal-title">Calibrate scale</h2><button type="button" class="close-btn" data-close="cal-modal" aria-label="Close">&times;</button></div><form id="cal-form"><p class="muted">Tare with an empty platform first, then place a known mass and enter its weight.</p><label for="known">Known mass (grams)</label><input id="known" name="known_grams" type="number" min="0.1" step="0.1" required><div class="actions"><button type="button" class="quiet" data-close="cal-modal">Cancel</button><button type="submit" class="btn-primary">Save calibration</button><p id="cal-message" class="message"></p></div></form></div></div>
 <script>
 const message=document.getElementById('message');
 document.getElementById('preview').src='/stream?ts='+Date.now();
 const openModal=id=>{const el=document.getElementById(id);el.classList.add('show');el.setAttribute('aria-hidden','false')};
-const closeModal=id=>{const el=document.getElementById(id);el.classList.remove('show');el.setAttribute('aria-hidden','true');if(id==='password-modal'){message.textContent='';message.className='message';document.getElementById('password-form').reset()}if(id==='wifi-modal'){networkMessage.textContent='';networkMessage.className='message';document.getElementById('clear-password').checked=false;document.getElementById('wifi-password').value=''}if(id==='cal-modal'){const cm=document.getElementById('cal-message');cm.textContent='';cm.className='message';document.getElementById('cal-form').reset()}};
+const closeModal=id=>{if(id==='led-modal'&&ledBusy)return;const el=document.getElementById(id);el.classList.remove('show');el.setAttribute('aria-hidden','true');if(id==='password-modal'){message.textContent='';message.className='message';document.getElementById('password-form').reset()}if(id==='wifi-modal'){networkMessage.textContent='';networkMessage.className='message';document.getElementById('clear-password').checked=false;document.getElementById('wifi-password').value=''}if(id==='cal-modal'){const cm=document.getElementById('cal-message');cm.textContent='';cm.className='message';document.getElementById('cal-form').reset()}};
 document.getElementById('wifi-open').onclick=()=>openModal('wifi-modal');document.getElementById('password-open').onclick=()=>openModal('password-modal');
 document.querySelectorAll('[data-close]').forEach(btn=>btn.onclick=()=>closeModal(btn.dataset.close));
 document.querySelectorAll('.modal').forEach(modal=>modal.onclick=e=>{if(e.target===modal)closeModal(modal.id)});
@@ -99,6 +119,41 @@ document.getElementById('scale-enabled').onchange=async(e)=>{const checkbox=e.ta
 async function pollWeight(){if(!scaleEnabled||wBusy||document.hidden)return;wBusy=true;try{const r=await api('/api/weight');const d=await r.json();const calibrated=Number(d.scale)!==1;document.getElementById('w-grams').textContent=d.valid&&calibrated?Number(d.grams).toFixed(1):'--';document.getElementById('w-raw').textContent=d.valid?d.raw:'-';document.getElementById('w-age').textContent=d.valid?d.age_ms+' ms':'-';document.getElementById('w-offset').textContent=d.offset;document.getElementById('w-scale').textContent=Number(d.scale).toFixed(3);if(!d.valid)wSet('pill-bad','No sensor');else if(!calibrated)wSet('pill-wait','Uncalibrated');else if(!d.stable)wSet('pill-wait','Settling');else wSet('pill-ok','Stable')}catch(e){wSet('pill-bad','Offline');document.getElementById('w-grams').textContent='--'}finally{wBusy=false}}setInterval(pollWeight,1000);
 document.getElementById('w-tare').onclick=async()=>{const b=document.getElementById('w-tare');b.disabled=true;wMsg.className='message';wMsg.textContent='Taring...';try{const r=await api('/api/weight/tare',{method:'POST'});const d=await r.json();wMsg.className='message '+(r.ok?'ok':'error');wMsg.textContent=d.message||'Request failed'}catch(e){wMsg.className='message error';wMsg.textContent='Request failed'}finally{b.disabled=false;pollWeight();setTimeout(()=>{wMsg.textContent='';wMsg.className='message'},4000)}};
 document.getElementById('w-cal-open').onclick=()=>openModal('cal-modal');document.getElementById('cal-form').onsubmit=async(e)=>{e.preventDefault();const cm=document.getElementById('cal-message');const body=new URLSearchParams(new FormData(e.target));if(!(Number(body.get('known_grams'))>0)){cm.className='message error';cm.textContent='Enter a mass greater than zero';return}cm.className='message';cm.textContent='Calibrating...';try{const r=await api('/api/weight/calibrate',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});const d=await r.json();cm.className='message '+(r.ok?'ok':'error');cm.textContent=d.message||'Request failed';if(r.ok){pollWeight();setTimeout(()=>closeModal('cal-modal'),900)}}catch(e){cm.className='message error';cm.textContent='Request failed'}};
+// LED edits stay local until either explicit Save action.
+let ledBusy=false;
+const ledMessage=document.getElementById('led-message');
+const ledControls=document.getElementById('led-controls');
+const ledHardware=document.getElementById('led-hardware-controls');
+const ledReload=document.getElementById('led-reload');
+function setLedBusy(busy){ledBusy=busy;ledControls.disabled=busy;ledHardware.disabled=busy;ledReload.disabled=busy}
+function showLedState(d){
+ document.getElementById('led-enabled').checked=d.enabled;
+ ['red','green','blue','brightness'].forEach(key=>{document.getElementById('led-'+key).value=d[key];document.getElementById('led-'+key+'-value').textContent=d[key]});
+ document.getElementById('led-count').value=d.led_count;document.getElementById('led-pin').value=d.data_gpio;
+ document.getElementById('led-limit').textContent=`Applied brightness: ${d.effective_brightness}%. Power budget: ${d.power_budget_ma} mA${d.current_limited?' (brightness limited)':''}.`;
+ document.getElementById('led-summary').textContent=`${d.enabled?'On':'Off'} · RGB(${d.red}, ${d.green}, ${d.blue}) · ${d.effective_brightness}% applied brightness`;
+}
+async function ledRequest(url,body){
+ const r=await api(url,{...(body?{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body}:{}),signal:AbortSignal.timeout(8000)});
+ const d=await r.json();if(!r.ok)throw new Error(d.message||'LED controller unavailable');return d;
+}
+async function loadLed(){
+ if(ledBusy)return;setLedBusy(true);ledMessage.className='message';ledMessage.textContent='Loading...';
+ let loaded=false;
+ try{showLedState(await ledRequest('/api/led'));loaded=true;ledMessage.textContent=''}
+ catch(e){ledMessage.className='message error';ledMessage.textContent=e.message}
+ finally{setLedBusy(false);ledControls.disabled=!loaded;ledHardware.disabled=!loaded}
+}
+document.getElementById('led-open').onclick=()=>{openModal('led-modal');loadLed()};ledReload.onclick=loadLed;
+['red','green','blue','brightness'].forEach(key=>{const slider=document.getElementById('led-'+key);slider.oninput=()=>document.getElementById('led-'+key+'-value').textContent=slider.value});
+async function saveLed(url,body){
+ if(ledBusy)return;setLedBusy(true);ledMessage.className='message';ledMessage.textContent='Saving...';
+ try{await ledRequest(url,body);showLedState(await ledRequest('/api/led'));ledMessage.className='message ok';ledMessage.textContent='Saved'}
+ catch(e){ledMessage.className='message error';ledMessage.textContent=e.message+'. Reload to confirm device state.'}
+ finally{setLedBusy(false)}
+}
+document.getElementById('led-form').onsubmit=e=>{e.preventDefault();const body=new URLSearchParams(new FormData(e.target));body.set('enabled',String(document.getElementById('led-enabled').checked));saveLed('/api/led/control',body)};
+document.getElementById('led-hardware-form').onsubmit=e=>{e.preventDefault();saveLed('/api/led/hardware',new URLSearchParams(new FormData(e.target)))};
  load().then(()=>{if(scaleEnabled)pollWeight()});
 </script></main></body></html>)HTML";
 

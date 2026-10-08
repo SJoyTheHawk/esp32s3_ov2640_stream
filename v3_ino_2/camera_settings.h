@@ -40,6 +40,14 @@ public:
         static constexpr float WEIGHT_SCALE = 1.0f;
         static constexpr bool SCALE_ENABLED = true;
 
+        static constexpr bool LED_ENABLED = false;
+        static constexpr uint8_t LED_RED = 255;
+        static constexpr uint8_t LED_GREEN = 255;
+        static constexpr uint8_t LED_BLUE = 255;
+        static constexpr uint8_t LED_BRIGHTNESS_PERCENT = 10;
+        static constexpr uint16_t LED_COUNT = 45;
+        static constexpr uint8_t LED_DATA_PIN = 21;
+
         static constexpr bool PYTHON_SERVER_ENABLED = false;
         static constexpr char PYTHON_SERVER_IP[32] = "192.168.1.183";
         static constexpr uint16_t PYTHON_SERVER_PORT = 8000;
@@ -73,6 +81,14 @@ public:
     int32_t weightOffset;
     float weightScale;
     bool scaleEnabled;
+
+    bool ledEnabled;
+    uint8_t ledRed;
+    uint8_t ledGreen;
+    uint8_t ledBlue;
+    uint8_t ledBrightnessPercent;
+    uint16_t ledCount;
+    uint8_t ledDataPin;
 
     bool pythonServerEnabled;
     char pythonServerIP[32];
@@ -120,6 +136,10 @@ public:
     bool writeWeightScale(float scale);
     bool writeScaleEnabled(bool enabled);
 
+    bool writeLedSettings(bool enabled, uint8_t red, uint8_t green, uint8_t blue,
+                          uint8_t brightnessPercent);
+    bool writeLedHardware(uint16_t count, uint8_t dataPin);
+
     bool writePythonServerEnabled(bool enabled);
     bool writePythonServerIP(const char* ip, size_t length);
     bool writePythonServerPort(uint16_t port);
@@ -134,6 +154,8 @@ private:
     static const char* const NVS_NAMESPACE;
 
     void setDefaults();
+    bool writeLedConfig(bool enabled, uint8_t red, uint8_t green, uint8_t blue,
+                        uint8_t brightness, uint16_t count, uint8_t pin);
     bool writeStringSetting(const char* key, const char* value, size_t length,
                             char* destination, size_t destinationSize);
 };
