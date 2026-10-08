@@ -17,6 +17,7 @@ public:
     WeightSensor(uint8_t dataPin, uint8_t clockPin, CameraSettings* settings);
     void begin();
     void startTask();
+    void setEnabled(bool enabled);
     WeightReading latest() const;
     bool tare(int32_t& offset);
     bool calibrate(float knownGrams, float& scale);
@@ -34,6 +35,7 @@ private:
     TaskHandle_t taskHandle_ = nullptr;
     mutable portMUX_TYPE snapshotMux_ = portMUX_INITIALIZER_UNLOCKED;
     SemaphoreHandle_t readMutex_ = nullptr;
+    volatile bool enabled_ = false;
 };
 
 #endif

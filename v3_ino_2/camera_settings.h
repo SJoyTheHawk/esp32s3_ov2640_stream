@@ -38,6 +38,7 @@ public:
         static constexpr bool HORIZONTAL_MIRROR = false;
         static constexpr int32_t WEIGHT_OFFSET = 0;
         static constexpr float WEIGHT_SCALE = 1.0f;
+        static constexpr bool SCALE_ENABLED = true;
 
         static constexpr bool PYTHON_SERVER_ENABLED = false;
         static constexpr char PYTHON_SERVER_IP[32] = "192.168.1.183";
@@ -71,6 +72,7 @@ public:
     bool horizontalMirror;
     int32_t weightOffset;
     float weightScale;
+    bool scaleEnabled;
 
     bool pythonServerEnabled;
     char pythonServerIP[32];
@@ -116,6 +118,7 @@ public:
     bool writeHorizontalMirror(bool mirror);
     bool writeWeightOffset(int32_t offset);
     bool writeWeightScale(float scale);
+    bool writeScaleEnabled(bool enabled);
 
     bool writePythonServerEnabled(bool enabled);
     bool writePythonServerIP(const char* ip, size_t length);

@@ -34,6 +34,9 @@ void CameraWebServer::begin() {
     server_.on("/api/settings", HTTP_POST, [this](AsyncWebServerRequest* request) {
         handlePostSettings(request);
     });
+    server_.on("/api/scale", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        handleScaleEnabled(request);
+    });
     server_.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
         handleGetStatus(request);
     });
@@ -74,6 +77,10 @@ void CameraWebServer::loop() {
     }
 }
 
+void CameraWebServer::setFirmwareVersion(const char* version) {
+    firmwareVersion_ = version && version[0] != '\0' ? version : "unknown";
+}
+
 void CameraWebServer::setReconnectCallback(std::function<void()> callback) {
     reconnectCallback_ = callback;
 }
@@ -83,6 +90,10 @@ void CameraWebServer::setFrameCaptureCallback(std::function<size_t(uint8_t*, siz
 }
 
 void CameraWebServer::setWeightSensor(WeightSensor* sensor) { weightSensor_ = sensor; }
+
+void CameraWebServer::setScaleEnabledCallback(std::function<void(bool)> callback) {
+    scaleEnabledCallback_ = callback;
+}
 
 void CameraWebServer::setFrameRateCallback(std::function<uint8_t()> callback) {
     frameRateCallback_ = callback;
@@ -251,6 +262,7 @@ void CameraWebServer::handleGetSettings(AsyncWebServerRequest* request) {
     document["gateway"] = IPAddress(settings_->gateway).toString();
     document["subnet"] = IPAddress(settings_->subnet).toString();
     document["device_name"] = settings_->deviceName;
+    document["firmware_version"] = firmwareVersion_;
     document["camera_resolution"] = settings_->cameraResolution;
     document["camera_quality"] = settings_->cameraQuality;
     document["frame_rate"] = settings_->frameRate;
@@ -259,6 +271,7 @@ void CameraWebServer::handleGetSettings(AsyncWebServerRequest* request) {
     document["saturation"] = settings_->saturation;
     document["vertical_flip"] = settings_->verticalFlip;
     document["horizontal_mirror"] = settings_->horizontalMirror;
+    document["scale_enabled"] = settings_->scaleEnabled;
 
     String body;
     serializeJson(document, body);
@@ -333,7 +346,6 @@ void CameraWebServer::handlePostSettings(AsyncWebServerRequest* request) {
         sendJson(request, 500, "Failed to save network settings");
         return;
     }
-
     StaticJsonDocument<256> document;
     document["status"] = "success";
     document["message"] = "Settings saved; reconnecting WiFi";
@@ -346,6 +358,31 @@ void CameraWebServer::handlePostSettings(AsyncWebServerRequest* request) {
     if (reconnectCallback_) reconnectAtMs_ = millis() + 1500UL;
     Serial.printf("[WEB] Network settings saved (SSID: %s, DHCP: %s)\n",
                   ssid.c_str(), useDHCP ? "yes" : "no");
+}
+
+void CameraWebServer::handleScaleEnabled(AsyncWebServerRequest* request) {
+    if (!isAdminAuthenticated(request)) {
+        if (isAuthenticated(request)) sendJson(request, 403, "Admin access required");
+        else sendUnauthorized(request);
+        return;
+    }
+    if (!request->hasArg("enabled")) {
+        sendJson(request, 400, "Missing scale setting");
+        return;
+    }
+    const String value = request->arg("enabled");
+    if (value != "true" && value != "false") {
+        sendJson(request, 400, "Invalid scale setting");
+        return;
+    }
+    const bool enabled = value == "true";
+    if (!settings_->writeScaleEnabled(enabled)) {
+        sendJson(request, 500, "Failed to save scale setting");
+        return;
+    }
+    if (scaleEnabledCallback_) scaleEnabledCallback_(enabled);
+    sendJson(request, 200, enabled ? "Scale enabled" : "Scale disabled");
+    Serial0.printf("[SCALE] %s\n", enabled ? "enabled" : "disabled");
 }
 
 void CameraWebServer::handleGetStatus(AsyncWebServerRequest* request) {
@@ -362,6 +399,7 @@ void CameraWebServer::handleGetStatus(AsyncWebServerRequest* request) {
     document["wifi_ssid"] = connected ? WiFi.SSID() : settings_->wifiSSID;
     document["rssi"] = connected ? WiFi.RSSI() : 0;
     document["device_name"] = settings_->deviceName;
+    document["firmware_version"] = firmwareVersion_;
     document["auth_level"] = getAuthLevel(request) == AuthLevel::ADMIN ? "admin" : "user";
     document["camera_resolution"] = settings_->cameraResolution;
     document["camera_quality"] = settings_->cameraQuality;
@@ -371,6 +409,7 @@ void CameraWebServer::handleGetStatus(AsyncWebServerRequest* request) {
     document["saturation"] = settings_->saturation;
     document["vertical_flip"] = settings_->verticalFlip;
     document["horizontal_mirror"] = settings_->horizontalMirror;
+    document["scale_enabled"] = settings_->scaleEnabled;
     String body;
     serializeJson(document, body);
     request->send(200, "application/json", body);
@@ -429,7 +468,7 @@ void CameraWebServer::handleCameraConfig(AsyncWebServerRequest* request) {
 
 void CameraWebServer::handleGetWeight(AsyncWebServerRequest* request) {
     if (!isAuthenticated(request)) { sendUnauthorized(request); return; }
-    if (!weightSensor_) { sendJson(request, 503, "Scale not responding"); return; }
+    if (!settings_->scaleEnabled || !weightSensor_) { sendJson(request, 503, "Scale is disabled"); return; }
     const WeightReading reading = weightSensor_->latest();
     StaticJsonDocument<256> document;
     document["valid"] = reading.valid;
@@ -443,7 +482,7 @@ void CameraWebServer::handleGetWeight(AsyncWebServerRequest* request) {
 
 void CameraWebServer::handleTareWeight(AsyncWebServerRequest* request) {
     if (!isAuthenticated(request)) { sendUnauthorized(request); return; }
-    if (!weightSensor_) { sendJson(request, 503, "Scale not responding"); return; }
+    if (!settings_->scaleEnabled || !weightSensor_) { sendJson(request, 503, "Scale is disabled"); return; }
     int32_t offset;
     if (!weightSensor_->tare(offset)) { sendJson(request, 503, "Scale not responding"); return; }
     StaticJsonDocument<160> document; document["status"] = "success"; document["message"] = "Tare complete"; document["offset"] = offset;
@@ -455,6 +494,7 @@ void CameraWebServer::handleCalibrateWeight(AsyncWebServerRequest* request) {
         if (isAuthenticated(request)) sendJson(request, 403, "Admin access required"); else sendUnauthorized(request);
         return;
     }
+    if (!settings_->scaleEnabled) { sendJson(request, 503, "Scale is disabled"); return; }
     if (!weightSensor_ || !request->hasArg("known_grams")) { sendJson(request, 400, "Missing known mass"); return; }
     const float known = request->arg("known_grams").toFloat();
     if (!(known > 0.0f)) { sendJson(request, 400, "Known mass must be greater than zero"); return; }
@@ -493,8 +533,8 @@ void CameraWebServer::handleCapture(AsyncWebServerRequest* request) {
     response->addHeader("Cache-Control", "no-store");
     response->addHeader("Content-Disposition", "inline; filename=capture.jpg");
     response->addHeader("Connection", "close");
-    response->addHeader("X-Weight-Valid", reading.valid ? "1" : "0");
-    if (reading.valid) {
+    if (settings_->scaleEnabled) response->addHeader("X-Weight-Valid", reading.valid ? "1" : "0");
+    if (settings_->scaleEnabled && reading.valid) {
         response->addHeader("X-Weight-Grams", String(reading.grams, 2));
         response->addHeader("X-Weight-Raw", String(reading.raw));
         response->addHeader("X-Weight-Age-Ms", String(millis() - reading.sampledAtMs));
@@ -527,10 +567,11 @@ void CameraWebServer::handleStream(AsyncWebServerRequest* request) {
     StreamState* state = new StreamState();
     const std::function<size_t(uint8_t*, size_t, WeightReading&)> capture = frameCaptureCallback_;
     const std::function<uint8_t()> fps = frameRateCallback_;
+    CameraSettings* const settings = settings_;
 
     AsyncWebServerResponse* response = request->beginChunkedResponse(
         "multipart/x-mixed-replace; boundary=frame",
-        [state, capture, fps](uint8_t* buffer, size_t maxLen, size_t index) -> size_t {
+        [state, capture, fps, settings](uint8_t* buffer, size_t maxLen, size_t index) -> size_t {
             if (index == 0 && state->nextFrameAt == 0) state->nextFrameAt = millis();
             if (state->prefixOffset == state->prefix.length() &&
                 state->frameOffset == state->frameLength &&
@@ -547,8 +588,8 @@ void CameraWebServer::handleStream(AsyncWebServerRequest* request) {
                 if (state->frameLength == 0 || state->frameLength > 512 * 1024) return 0;
                 state->frameOffset = 0;
                 state->prefix = String("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ") + String(state->frameLength) + "\r\n";
-                state->prefix += String("X-Weight-Valid: ") + (reading.valid ? "1\r\n" : "0\r\n");
-                if (reading.valid) {
+                if (settings->scaleEnabled) state->prefix += String("X-Weight-Valid: ") + (reading.valid ? "1\r\n" : "0\r\n");
+                if (settings->scaleEnabled && reading.valid) {
                     state->prefix += String("X-Weight-Grams: ") + String(reading.grams, 2) + "\r\n";
                     state->prefix += String("X-Weight-Raw: ") + String(reading.raw) + "\r\n";
                     state->prefix += String("X-Weight-Age-Ms: ") + String(millis() - reading.sampledAtMs) + "\r\n";

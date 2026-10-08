@@ -31,6 +31,10 @@
 // before normal camera operation. Reflashing does not erase NVS contents.
 #define NVS_TEST_WRITE 0
 
+// Increment this value when the firmware codebase changes. It is printed at
+// boot and shown in the web UI.
+#define FIRMWARE_VERSION "3.2.0"
+
 // ==================== 摄像头引脚（按用户丝印图） ====================
 #define PWDN_GPIO_NUM     15   // PWON
 #define RESET_GPIO_NUM    16   // RST
@@ -91,6 +95,7 @@ static size_t captureJpeg(uint8_t* destination, size_t capacity, WeightReading& 
     const size_t length = latestFrameLength <= capacity ? latestFrameLength : 0;
     if (length > 0) memcpy(destination, latestFrame, length);
     weight = latestFrameWeight;
+    if (!settings.scaleEnabled) weight = WeightReading();
     if (weight.valid && millis() - weight.sampledAtMs > 1000UL) weight.valid = false;
     xSemaphoreGive(frameMutex);
     return length;
@@ -143,7 +148,7 @@ static void cameraTask(void*) {
                     if (length > 0) {
                         memcpy(latestFrame, fb->buf, length);
                         latestFrameLength = length;
-                        latestFrameWeight = weightSensor.latest();
+                        latestFrameWeight = settings.scaleEnabled ? weightSensor.latest() : WeightReading();
                     }
                     xSemaphoreGive(frameMutex);
                 }
@@ -356,6 +361,7 @@ void setup() {
     Serial0.begin(115200);
     Serial0.println("\n===========================");
     Serial0.println(" ESP32-S3 Camera Streamer");
+    Serial0.printf(" Firmware version: %s\n", FIRMWARE_VERSION);
     Serial0.println("===========================");
 
     // 初始化 LED
@@ -371,7 +377,7 @@ void setup() {
     settings.readFromNVS();
     settings.printSettings();
     weightSensor.begin();
-    weightSensor.startTask();
+    if (settings.scaleEnabled) weightSensor.startTask();
     factoryReset.begin();
 
     if (!settings.checkWiFiConfigured()) {
@@ -446,8 +452,12 @@ void setup() {
     webServer.setReconnectCallback([]() {
         connectWiFi();
     });
+    webServer.setFirmwareVersion(FIRMWARE_VERSION);
     webServer.setFrameCaptureCallback(captureJpeg);
     webServer.setWeightSensor(&weightSensor);
+    webServer.setScaleEnabledCallback([](bool enabled) {
+        weightSensor.setEnabled(enabled);
+    });
     webServer.setFrameRateCallback([]() { return settings.frameRate; });
     webServer.setCameraConfigCallback(applyCameraConfig);
     connectWiFi();

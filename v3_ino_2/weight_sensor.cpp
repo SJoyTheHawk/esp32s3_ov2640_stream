@@ -9,9 +9,12 @@ WeightSensor::WeightSensor(uint8_t dataPin, uint8_t clockPin, CameraSettings* se
     : dataPin_(dataPin), clockPin_(clockPin), settings_(settings) {}
 
 void WeightSensor::begin() {
-    pinMode(dataPin_, INPUT);
-    pinMode(clockPin_, OUTPUT);
-    digitalWrite(clockPin_, LOW);
+    enabled_ = settings_ && settings_->scaleEnabled;
+    if (enabled_) {
+        pinMode(dataPin_, INPUT);
+        pinMode(clockPin_, OUTPUT);
+        digitalWrite(clockPin_, LOW);
+    }
     readMutex_ = xSemaphoreCreateMutex();
     portENTER_CRITICAL(&snapshotMux_);
     reading_ = WeightReading();
@@ -20,6 +23,20 @@ void WeightSensor::begin() {
 
 void WeightSensor::startTask() {
     xTaskCreatePinnedToCore(taskEntry, "HX711", 4096, this, 1, &taskHandle_, 1);
+}
+
+void WeightSensor::setEnabled(bool enabled) {
+    enabled_ = enabled;
+    if (enabled_) {
+        pinMode(dataPin_, INPUT);
+        pinMode(clockPin_, OUTPUT);
+        digitalWrite(clockPin_, LOW);
+        if (!taskHandle_) startTask();
+    } else {
+        portENTER_CRITICAL(&snapshotMux_);
+        reading_ = WeightReading();
+        portEXIT_CRITICAL(&snapshotMux_);
+    }
 }
 
 WeightReading WeightSensor::latest() const {
@@ -37,6 +54,10 @@ void WeightSensor::taskLoop() {
     int32_t raw = 0;
     float previous = 0.0f;
     for (;;) {
+        if (!enabled_) {
+            vTaskDelay(pdMS_TO_TICKS(250));
+            continue;
+        }
         const bool ok = readRaw(raw);
         WeightReading next;
         next.sampledAtMs = millis();

@@ -55,6 +55,7 @@ void CameraSettings::setDefaults() {
     horizontalMirror = DefaultValues::HORIZONTAL_MIRROR;
     weightOffset = DefaultValues::WEIGHT_OFFSET;
     weightScale = DefaultValues::WEIGHT_SCALE;
+    scaleEnabled = DefaultValues::SCALE_ENABLED;
 
     pythonServerEnabled = DefaultValues::PYTHON_SERVER_ENABLED;
     strncpy(pythonServerIP, DefaultValues::PYTHON_SERVER_IP, sizeof(pythonServerIP));
@@ -104,6 +105,7 @@ bool CameraSettings::initializeNVS() {
     ok &= prefs.putBool("hMirror", DefaultValues::HORIZONTAL_MIRROR);
     ok &= prefs.putInt("wtOffset", DefaultValues::WEIGHT_OFFSET) > 0;
     ok &= prefs.putFloat("wtScale", DefaultValues::WEIGHT_SCALE) > 0;
+    ok &= prefs.putBool("scaleEnabled", DefaultValues::SCALE_ENABLED);
     ok &= prefs.putBool("pyEnabled", DefaultValues::PYTHON_SERVER_ENABLED);
     prefs.putString("pyIP", DefaultValues::PYTHON_SERVER_IP);
     ok &= prefs.putUShort("pyPort", DefaultValues::PYTHON_SERVER_PORT) > 0;
@@ -112,7 +114,7 @@ bool CameraSettings::initializeNVS() {
     ok &= prefs.isKey("username") && prefs.isKey("password") &&
           prefs.isKey("userUsername") && prefs.isKey("userPassword") &&
           prefs.isKey("wifiConfigured") &&
-          prefs.isKey("wtOffset") && prefs.isKey("wtScale") &&
+          prefs.isKey("wtOffset") && prefs.isKey("wtScale") && prefs.isKey("scaleEnabled") &&
           prefs.isKey("wifiSSID") && prefs.isKey("wifiPass") &&
           prefs.isKey("pyIP") && prefs.isKey("deviceName") && prefs.isKey("mdnsHost");
     if (ok) {
@@ -182,6 +184,7 @@ void CameraSettings::readFromNVS() {
     weightOffset = prefs.getInt("wtOffset", DefaultValues::WEIGHT_OFFSET);
     weightScale = prefs.getFloat("wtScale", DefaultValues::WEIGHT_SCALE);
     if (!isfinite(weightScale) || weightScale == 0.0f) weightScale = DefaultValues::WEIGHT_SCALE;
+    scaleEnabled = prefs.getBool("scaleEnabled", DefaultValues::SCALE_ENABLED);
 
     pythonServerEnabled = prefs.getBool("pyEnabled", DefaultValues::PYTHON_SERVER_ENABLED);
     value = prefs.getString("pyIP", DefaultValues::PYTHON_SERVER_IP);
@@ -425,6 +428,14 @@ bool CameraSettings::writeWeightScale(float scale) {
     return ok;
 }
 
+bool CameraSettings::writeScaleEnabled(bool enabled) {
+    if (!prefs.begin(NVS_NAMESPACE, false)) return false;
+    const bool ok = prefs.putBool("scaleEnabled", enabled);
+    prefs.end();
+    if (ok) scaleEnabled = enabled;
+    return ok;
+}
+
 bool CameraSettings::writePythonServerEnabled(bool enabled) {
     if (!prefs.begin(NVS_NAMESPACE, false)) return false;
     const bool ok = prefs.putBool("pyEnabled", enabled);
@@ -473,6 +484,7 @@ void CameraSettings::printSettings() {
     Serial.printf("Horizontal Mirror: %s\n", horizontalMirror ? "Yes" : "No");
     Serial.printf("Weight Offset: %ld\n", static_cast<long>(weightOffset));
     Serial.printf("Weight Scale: %.6f\n", weightScale);
+    Serial.printf("Scale Enabled: %s\n", scaleEnabled ? "yes" : "no");
     Serial.printf("Python Server Enabled: %s\n", pythonServerEnabled ? "Yes" : "No");
     Serial.printf("Python Server: %s:%u\n", pythonServerIP, pythonServerPort);
     Serial.printf("Device Name: %s\n", deviceName);

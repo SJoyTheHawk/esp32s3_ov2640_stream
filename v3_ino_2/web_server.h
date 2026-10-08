@@ -15,9 +15,11 @@ public:
 
     void begin();
     void loop();
+    void setFirmwareVersion(const char* version);
     void setReconnectCallback(std::function<void()> callback);
     void setFrameCaptureCallback(std::function<size_t(uint8_t*, size_t, WeightReading&)> callback);
     void setWeightSensor(WeightSensor* sensor);
+    void setScaleEnabledCallback(std::function<void(bool)> callback);
     void setFrameRateCallback(std::function<uint8_t()> callback);
     void setCameraConfigCallback(std::function<bool(uint8_t, uint8_t, int8_t, int8_t, int8_t, bool, bool)> callback);
 
@@ -26,6 +28,7 @@ private:
 
     AsyncWebServer server_;
     CameraSettings* settings_;
+    const char* firmwareVersion_ = "unknown";
     String adminAuthToken_;
     String userAuthToken_;
     unsigned long adminLastActivityMs_;
@@ -34,6 +37,7 @@ private:
     std::function<void()> reconnectCallback_;
     std::function<size_t(uint8_t*, size_t, WeightReading&)> frameCaptureCallback_;
     WeightSensor* weightSensor_ = nullptr;
+    std::function<void(bool)> scaleEnabledCallback_;
     std::function<uint8_t()> frameRateCallback_;
     std::function<bool(uint8_t, uint8_t, int8_t, int8_t, int8_t, bool, bool)> cameraConfigCallback_;
 
@@ -49,6 +53,7 @@ private:
     void handleChangePassword(AsyncWebServerRequest* request);
     void handleGetSettings(AsyncWebServerRequest* request);
     void handlePostSettings(AsyncWebServerRequest* request);
+    void handleScaleEnabled(AsyncWebServerRequest* request);
     void handleGetStatus(AsyncWebServerRequest* request);
     void handleCameraConfig(AsyncWebServerRequest* request);
     void handleStream(AsyncWebServerRequest* request);
