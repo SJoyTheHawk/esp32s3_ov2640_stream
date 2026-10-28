@@ -202,7 +202,7 @@ void CameraSettings::readFromNVS() {
     if (prefs.getBytesLength("ledConfig") == sizeof(ledConfig) &&
         prefs.getBytes("ledConfig", ledConfig, sizeof(ledConfig)) == sizeof(ledConfig) &&
         ledConfig[0] == 1 && ledConfig[1] <= 1 && ledConfig[5] <= 100 &&
-        ledConfig[6] >= 1 && ledConfig[6] <= 45 && ledConfig[7] == 21) {
+        ledConfig[6] >= 1 && ledConfig[6] <= 102 && ledConfig[7] == 21) {
         ledEnabled = ledConfig[1]; ledRed = ledConfig[2]; ledGreen = ledConfig[3];
         ledBlue = ledConfig[4]; ledBrightnessPercent = ledConfig[5];
         ledCount = ledConfig[6]; ledDataPin = ledConfig[7];
@@ -460,7 +460,7 @@ bool CameraSettings::writeScaleEnabled(bool enabled) {
 
 bool CameraSettings::writeLedConfig(bool enabled, uint8_t red, uint8_t green,
                                     uint8_t blue, uint8_t brightness, uint16_t count, uint8_t pin) {
-    if (brightness > 100 || count < 1 || count > 45 || pin != 21) return false;
+    if (brightness > 100 || count < 1 || count > 102 || pin != 21) return false;
     // Dedicated handle: unrelated web settings use the class Preferences handle.
     Preferences ledPrefs;
     if (!ledPrefs.begin(NVS_NAMESPACE, false)) return false;

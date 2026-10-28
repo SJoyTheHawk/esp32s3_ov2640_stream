@@ -8,7 +8,7 @@ ESP32-S3 camera firmware with OV2640 sensor and optional Python companion server
 - WiFi with DHCP or static IP configuration
 - HTTP POST streaming to Python server
 - Embedded web UI with authentication and cookie sessions
-- WS2812B LED control (45-LED strip + onboard status pixel)
+- WS2812B LED control (102-LED strip + onboard status pixel)
 - HX711 weight sensor integration with scale calibration
 - Persistent settings storage (NVS)
 - Web-based network and camera configuration
@@ -20,7 +20,7 @@ ESP32-S3 camera firmware with OV2640 sensor and optional Python companion server
 
 - ESP32-S3 with OV2640 camera module
 - PSRAM enabled in board configuration
-- Optional: 45 WS2812B LEDs (DIN on GPIO 21) + onboard status LED (GPIO 48)
+- Optional: 102 WS2812B LEDs (DIN on GPIO 21) + onboard status LED (GPIO 48)
 - Optional: HX711 weight sensor module
 
 ### Firmware Setup
@@ -84,7 +84,7 @@ Verify pin configuration in `v3_ino_2/v3_ino_2.ino` matches your camera board be
 
 ### WS2812B LED Strip
 
-- 45 LEDs with DIN on GPIO 21
+- 102 LEDs with DIN on GPIO 21
 - Add 330–470Ω resistor in series with DIN
 - Use external 5V power supply for full strip
 - Brightness limited when powered from board

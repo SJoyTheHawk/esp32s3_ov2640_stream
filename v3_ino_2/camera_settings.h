@@ -45,7 +45,7 @@ public:
         static constexpr uint8_t LED_GREEN = 255;
         static constexpr uint8_t LED_BLUE = 255;
         static constexpr uint8_t LED_BRIGHTNESS_PERCENT = 10;
-        static constexpr uint16_t LED_COUNT = 45;
+        static constexpr uint16_t LED_COUNT = 102;
         static constexpr uint8_t LED_DATA_PIN = 21;
 
         static constexpr bool PYTHON_SERVER_ENABLED = false;

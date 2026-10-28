@@ -8,7 +8,7 @@
 
 class Ws2812bController {
 public:
-    static constexpr uint16_t MAX_LEDS = 45;
+    static constexpr uint16_t MAX_LEDS = 102;
     static constexpr uint16_t POWER_BUDGET_MA = 3000;
     static constexpr uint8_t CURRENT_PER_LED_MA = 60;
 

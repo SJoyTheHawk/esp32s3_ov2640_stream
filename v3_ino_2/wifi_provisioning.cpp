@@ -7,7 +7,7 @@ const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress AP_GATEWAY(192, 168, 4, 1);
 const IPAddress AP_SUBNET(255, 255, 255, 0);
 constexpr char AP_SSID[] = "The-Pipe-Camera-Setup";
-constexpr char AP_PASSWORD[] = "12345678";
+constexpr char AP_PASSWORD[] = "";
 }
 
 WiFiProvisioning::WiFiProvisioning(CameraSettings* settings)
