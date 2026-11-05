@@ -34,7 +34,7 @@
 
 // Increment this value when the firmware codebase changes. It is printed at
 // boot and shown in the web UI.
-#define FIRMWARE_VERSION "3.5.0"
+#define FIRMWARE_VERSION "v2.0-youxin"
 
 // ==================== 摄像头引脚（按用户丝印图） ====================
 #define PWDN_GPIO_NUM     15   // PWON

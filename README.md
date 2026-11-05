@@ -2,6 +2,11 @@
 
 ESP32-S3 camera firmware with OV2640 sensor and optional Python companion server.
 
+## Current release
+
+`v2.0-youxin` preserves the current Youxin ESP32-S3 / OV2640 board baseline
+before migration to another manufacturer. See the [release notes](docs/releases/v2.0-youxin.md).
+
 ## Features
 
 - JPEG capture at QVGA through UXGA with configurable quality and frame rate
