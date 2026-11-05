@@ -8,7 +8,7 @@ ESP32-S3 camera firmware with OV2640 sensor and optional Python companion server
 - WiFi with DHCP or static IP configuration
 - HTTP POST streaming to Python server
 - Embedded web UI with authentication and cookie sessions
-- WS2812B LED control (102-LED strip + onboard status pixel)
+- WS2812B LED control (configurable strip length and evenly spaced active LEDs + onboard status pixel)
 - HX711 weight sensor integration with scale calibration
 - Persistent settings storage (NVS)
 - Web-based network and camera configuration
@@ -84,7 +84,19 @@ Verify pin configuration in `v3_ino_2/v3_ino_2.ino` matches your camera board be
 
 ### WS2812B LED Strip
 
-- 102 LEDs with DIN on GPIO 21
+- Configurable maximum LED count (physical strip length), default 100, with DIN on GPIO 21
+- Configurable active LED count, default 100; valid range is 1 through the configured maximum
+- Configure both counts under **Configure LED → Save hardware**; settings survive reboot
+- Active LED positions are computed as integer i * maximum / active, starting at LED 0
+  - Maximum 10, active 5 → LEDs 0, 2, 4, 6, 8
+  - Maximum 10, active 3 → LEDs 0, 3, 6
+  - Equal counts → every LED turns on; inactive positions are cleared
+- Maximum count supports 1–1024 LEDs (a buffer resource guard); set it to the physical strip length
+- Existing saved active counts are retained on upgrade. The new maximum defaults to 100,
+  or the existing active count if it is greater than 100 (e.g. 102)
+- Current limiting uses the active count plus an idle reserve for the entire configured strip
+- API: GET /api/led returns led_count (active), led_max_count, and led_count_limit;
+  POST /api/led/hardware requires led_count, led_max_count, and data_gpio
 - Add 330–470Ω resistor in series with DIN
 - Use external 5V power supply for full strip
 - Brightness limited when powered from board

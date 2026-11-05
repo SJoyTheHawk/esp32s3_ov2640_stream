@@ -445,10 +445,12 @@ void CameraWebServer::appendLedState(JsonObject object) {
     object["brightness"] = state.brightnessPercent;
     object["effective_brightness"] = state.effectiveBrightnessPercent;
     object["led_count"] = state.count;
+    object["led_max_count"] = state.maxCount;
+    object["led_count_limit"] = LedConfig::MAX_SUPPORTED_COUNT;
     object["data_gpio"] = state.dataPin;
     object["power_budget_ma"] = Ws2812bController::POWER_BUDGET_MA;
     object["current_limited"] = state.enabled && state.effectiveBrightnessPercent < state.brightnessPercent;
-    object["idle_reserve_ma"] = Ws2812bController::MAX_LEDS;
+    object["idle_reserve_ma"] = state.maxCount;
     object["estimated_full_white_ma"] = static_cast<uint32_t>(state.count) * Ws2812bController::CURRENT_PER_LED_MA;
 }
 
@@ -465,7 +467,7 @@ static bool parseLedNumber(AsyncWebServerRequest* request, const char* name,
                            int minimum, int maximum, int& output) {
     if (!request->hasArg(name)) return false;
     const String value = request->arg(name);
-    if (value.length() == 0 || value.length() > 3) return false;
+    if (value.length() == 0 || value.length() > 4) return false;
     for (size_t i = 0; i < value.length(); ++i) {
         if (value[i] < '0' || value[i] > '9') return false;
     }
@@ -519,8 +521,9 @@ void CameraWebServer::handleLedHardware(AsyncWebServerRequest* request) {
         return;
     }
     if (!ledController_) { sendJson(request, 503, "LED controller unavailable"); return; }
-    int count, pin;
-    if (!parseLedNumber(request, "led_count", 1, Ws2812bController::MAX_LEDS, count) ||
+    int count, maxCount, pin;
+    if (!parseLedNumber(request, "led_max_count", 1, LedConfig::MAX_SUPPORTED_COUNT, maxCount) ||
+        !parseLedNumber(request, "led_count", 1, maxCount, count) ||
         !parseLedNumber(request, "data_gpio", 0, 255, pin) ||
         !Ws2812bController::isValidDataPin(static_cast<uint8_t>(pin))) {
         sendJson(request, 400, "Invalid LED hardware settings");
@@ -529,12 +532,12 @@ void CameraWebServer::handleLedHardware(AsyncWebServerRequest* request) {
     LedRequestLock lock(ledApiMutex_);
     if (!lock) { sendJson(request, 503, "LED controller busy"); return; }
     const Ws2812bController::State old = ledController_->state();
-    if (!ledController_->reinitialize(static_cast<uint16_t>(count), static_cast<uint8_t>(pin))) {
+    if (!ledController_->reinitialize(static_cast<uint16_t>(count), static_cast<uint16_t>(maxCount), static_cast<uint8_t>(pin))) {
         sendJson(request, 503, "Failed to reinitialize LED strip");
         return;
     }
-    if (!settings_->writeLedHardware(static_cast<uint16_t>(count), static_cast<uint8_t>(pin))) {
-        ledController_->reinitialize(old.count, old.dataPin);
+    if (!settings_->writeLedHardware(static_cast<uint16_t>(count), static_cast<uint16_t>(maxCount), static_cast<uint8_t>(pin))) {
+        ledController_->reinitialize(old.count, old.maxCount, old.dataPin);
         ledController_->apply(old.enabled, old.red, old.green, old.blue, old.brightnessPercent);
         sendJson(request, 500, "LED hardware save failed; previous configuration restored");
         return;

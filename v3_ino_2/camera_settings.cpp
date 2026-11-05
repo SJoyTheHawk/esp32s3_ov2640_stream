@@ -62,6 +62,7 @@ void CameraSettings::setDefaults() {
     ledBlue = DefaultValues::LED_BLUE;
     ledBrightnessPercent = DefaultValues::LED_BRIGHTNESS_PERCENT;
     ledCount = DefaultValues::LED_COUNT;
+    ledMaxCount = DefaultValues::LED_MAX_COUNT;
     ledDataPin = DefaultValues::LED_DATA_PIN;
 
     pythonServerEnabled = DefaultValues::PYTHON_SERVER_ENABLED;
@@ -113,9 +114,11 @@ bool CameraSettings::initializeNVS() {
     ok &= prefs.putInt("wtOffset", DefaultValues::WEIGHT_OFFSET) > 0;
     ok &= prefs.putFloat("wtScale", DefaultValues::WEIGHT_SCALE) > 0;
     ok &= prefs.putBool("scaleEnabled", DefaultValues::SCALE_ENABLED);
-    const uint8_t ledConfig[] = {1, DefaultValues::LED_ENABLED, DefaultValues::LED_RED,
+    const LedConfig::Values defaults = {DefaultValues::LED_ENABLED, DefaultValues::LED_RED,
         DefaultValues::LED_GREEN, DefaultValues::LED_BLUE, DefaultValues::LED_BRIGHTNESS_PERCENT,
-        static_cast<uint8_t>(DefaultValues::LED_COUNT), DefaultValues::LED_DATA_PIN};
+        DefaultValues::LED_COUNT, DefaultValues::LED_MAX_COUNT, DefaultValues::LED_DATA_PIN};
+    uint8_t ledConfig[LedConfig::BLOB_SIZE];
+    LedConfig::encode(defaults, ledConfig);
     ok &= prefs.putBytes("ledConfig", ledConfig, sizeof(ledConfig)) == sizeof(ledConfig);
     ok &= prefs.putBool("pyEnabled", DefaultValues::PYTHON_SERVER_ENABLED);
     prefs.putString("pyIP", DefaultValues::PYTHON_SERVER_IP);
@@ -198,14 +201,15 @@ void CameraSettings::readFromNVS() {
     if (!isfinite(weightScale) || weightScale == 0.0f) weightScale = DefaultValues::WEIGHT_SCALE;
     scaleEnabled = prefs.getBool("scaleEnabled", DefaultValues::SCALE_ENABLED);
     // One versioned blob keeps a power loss from producing mixed LED settings.
-    uint8_t ledConfig[8] = {};
-    if (prefs.getBytesLength("ledConfig") == sizeof(ledConfig) &&
-        prefs.getBytes("ledConfig", ledConfig, sizeof(ledConfig)) == sizeof(ledConfig) &&
-        ledConfig[0] == 1 && ledConfig[1] <= 1 && ledConfig[5] <= 100 &&
-        ledConfig[6] >= 1 && ledConfig[6] <= 102 && ledConfig[7] == 21) {
-        ledEnabled = ledConfig[1]; ledRed = ledConfig[2]; ledGreen = ledConfig[3];
-        ledBlue = ledConfig[4]; ledBrightnessPercent = ledConfig[5];
-        ledCount = ledConfig[6]; ledDataPin = ledConfig[7];
+    uint8_t ledConfig[LedConfig::BLOB_SIZE] = {};
+    const size_t ledConfigSize = prefs.getBytesLength("ledConfig");
+    LedConfig::Values saved = {};
+    if ((ledConfigSize == LedConfig::BLOB_SIZE || ledConfigSize == LedConfig::LEGACY_BLOB_SIZE) &&
+        prefs.getBytes("ledConfig", ledConfig, ledConfigSize) == ledConfigSize &&
+        LedConfig::decode(ledConfig, ledConfigSize, saved)) {
+        ledEnabled = saved.enabled; ledRed = saved.red; ledGreen = saved.green;
+        ledBlue = saved.blue; ledBrightnessPercent = saved.brightness;
+        ledCount = saved.active; ledMaxCount = saved.maximum; ledDataPin = saved.pin;
     }
 
     pythonServerEnabled = prefs.getBool("pyEnabled", DefaultValues::PYTHON_SERVER_ENABLED);
@@ -459,29 +463,30 @@ bool CameraSettings::writeScaleEnabled(bool enabled) {
 }
 
 bool CameraSettings::writeLedConfig(bool enabled, uint8_t red, uint8_t green,
-                                    uint8_t blue, uint8_t brightness, uint16_t count, uint8_t pin) {
-    if (brightness > 100 || count < 1 || count > 102 || pin != 21) return false;
+                                    uint8_t blue, uint8_t brightness, uint16_t count, uint16_t maxCount, uint8_t pin) {
+    if (brightness > 100 || !LedConfig::validCounts(count, maxCount) || pin != 21) return false;
     // Dedicated handle: unrelated web settings use the class Preferences handle.
     Preferences ledPrefs;
     if (!ledPrefs.begin(NVS_NAMESPACE, false)) return false;
-    const uint8_t blob[] = {1, static_cast<uint8_t>(enabled), red, green, blue,
-                           brightness, static_cast<uint8_t>(count), pin};
+    const LedConfig::Values values = {enabled, red, green, blue, brightness, count, maxCount, pin};
+    uint8_t blob[LedConfig::BLOB_SIZE];
+    LedConfig::encode(values, blob);
     const bool ok = ledPrefs.putBytes("ledConfig", blob, sizeof(blob)) == sizeof(blob);
     ledPrefs.end();
     if (ok) {
         ledEnabled = enabled; ledRed = red; ledGreen = green; ledBlue = blue;
-        ledBrightnessPercent = brightness; ledCount = count; ledDataPin = pin;
+        ledBrightnessPercent = brightness; ledCount = count; ledMaxCount = maxCount; ledDataPin = pin;
     }
     return ok;
 }
 
 bool CameraSettings::writeLedSettings(bool enabled, uint8_t red, uint8_t green,
                                       uint8_t blue, uint8_t brightnessPercent) {
-    return writeLedConfig(enabled, red, green, blue, brightnessPercent, ledCount, ledDataPin);
+    return writeLedConfig(enabled, red, green, blue, brightnessPercent, ledCount, ledMaxCount, ledDataPin);
 }
 
-bool CameraSettings::writeLedHardware(uint16_t count, uint8_t dataPin) {
-    return writeLedConfig(ledEnabled, ledRed, ledGreen, ledBlue, ledBrightnessPercent, count, dataPin);
+bool CameraSettings::writeLedHardware(uint16_t count, uint16_t maxCount, uint8_t dataPin) {
+    return writeLedConfig(ledEnabled, ledRed, ledGreen, ledBlue, ledBrightnessPercent, count, maxCount, dataPin);
 }
 
 bool CameraSettings::writePythonServerEnabled(bool enabled) {
@@ -533,9 +538,9 @@ void CameraSettings::printSettings() {
     Serial.printf("Weight Offset: %ld\n", static_cast<long>(weightOffset));
     Serial.printf("Weight Scale: %.6f\n", weightScale);
     Serial.printf("Scale Enabled: %s\n", scaleEnabled ? "yes" : "no");
-    Serial.printf("LED: %s RGB(%u,%u,%u) brightness=%u%% count=%u GPIO=%u\n",
+    Serial.printf("LED: %s RGB(%u,%u,%u) brightness=%u%% active=%u maximum=%u GPIO=%u\n",
                   ledEnabled ? "on" : "off", ledRed, ledGreen, ledBlue,
-                  ledBrightnessPercent, ledCount, ledDataPin);
+                  ledBrightnessPercent, ledCount, ledMaxCount, ledDataPin);
     Serial.printf("Python Server Enabled: %s\n", pythonServerEnabled ? "Yes" : "No");
     Serial.printf("Python Server: %s:%u\n", pythonServerIP, pythonServerPort);
     Serial.printf("Device Name: %s\n", deviceName);

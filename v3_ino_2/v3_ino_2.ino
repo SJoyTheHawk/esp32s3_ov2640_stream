@@ -34,7 +34,7 @@
 
 // Increment this value when the firmware codebase changes. It is printed at
 // boot and shown in the web UI.
-#define FIRMWARE_VERSION "3.4.5"
+#define FIRMWARE_VERSION "3.5.0"
 
 // ==================== 摄像头引脚（按用户丝印图） ====================
 #define PWDN_GPIO_NUM     15   // PWON
@@ -379,12 +379,12 @@ void setup() {
     }
     settings.readFromNVS();
     settings.printSettings();
-    if (!ledController.begin(settings.ledCount, settings.ledDataPin, settings.ledEnabled,
+    if (!ledController.begin(settings.ledCount, settings.ledMaxCount, settings.ledDataPin, settings.ledEnabled,
                              settings.ledRed, settings.ledGreen, settings.ledBlue,
                              settings.ledBrightnessPercent)) {
         Serial0.println("[LED] WS2812B initialization failed");
     }
-    if (!indicatorController.begin(1, LED_GPIO_NUM, false, 0, 0, 0, 0)) {
+    if (!indicatorController.begin(1, 1, LED_GPIO_NUM, false, 0, 0, 0, 0)) {
         Serial0.println("[LED] Onboard WS2812B indicator initialization failed");
     }
     weightSensor.begin();
